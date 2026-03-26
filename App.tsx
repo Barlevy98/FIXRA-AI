@@ -1,20 +1,36 @@
+import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { ClerkProvider, SignedIn, SignedOut } from '@clerk/clerk-expo';
+import ChatScreen from './src/screens/ChatScreen';
+import LoginScreen from './src/screens/LoginScreen';
+import { tokenCache } from './src/utils/tokenCache';
+import { PaywallProvider } from './src/context/PaywallContext';
+
+// מושכים את המפתח המאובטח מקובץ ה-.env
+const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
+
+// בדיקת בטיחות: מוודא שהמפתח אכן נמצא לפני שהאפליקציה עולה
+if (!CLERK_PUBLISHABLE_KEY) {
+  throw new Error("Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env");
+}
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+      <StatusBar style="light" />
+      
+      {/* אם המשתמש מחובר - תראה לו את הצ'אט, ועטוף אותו במונה ההודעות */}
+      <SignedIn>
+        <PaywallProvider>
+          <ChatScreen />
+        </PaywallProvider>
+      </SignedIn>
+      
+      {/* אם המשתמש מנותק - תראה לו את מסך ההתחברות */}
+      <SignedOut>
+        <LoginScreen />
+      </SignedOut>
+      
+    </ClerkProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
