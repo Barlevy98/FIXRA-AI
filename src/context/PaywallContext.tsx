@@ -10,10 +10,10 @@ type PaywallContextType = {
   incrementMessageCount: () => Promise<void>;
   hasReachedLimit: boolean;
   isPro: boolean;
+  currentPlan: string; // הוספנו את החבילה הנוכחית לטייפ
   purchasePackage: (plan: '20' | '50' | 'unlimited') => Promise<void>;
   chatLanguage: string;
   changeLanguage: (lang: string) => Promise<void>;
-  // הוספנו את פונקציות הפיתוח החסרות כדי למנוע את הקריסה:
   mockPurchaseSuccess: (plan: string) => Promise<void>;
   resetToFree: () => Promise<void>;
 };
@@ -25,6 +25,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
   const [messageCount, setMessageCount] = useState(0);
   const [maxMessages, setMaxMessages] = useState(INITIAL_FREE_LIMIT);
   const [isPro, setIsPro] = useState(false);
+  const [currentPlan, setCurrentPlan] = useState<string>('Free'); // ברירת המחדל היא Free
   const [chatLanguage, setChatLanguage] = useState('English'); 
 
   useEffect(() => {
@@ -36,6 +37,10 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
 
   const loadUserData = async () => {
     try {
+      // טעינת החבילה הנוכחית מהזיכרון
+      const savedPlan = await AsyncStorage.getItem(`@plan_${user?.id}`);
+      if (savedPlan) setCurrentPlan(savedPlan);
+
       const proStatus = await AsyncStorage.getItem(`@is_pro_${user?.id}`);
       if (proStatus === 'true') setIsPro(true);
 
@@ -103,9 +108,12 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     } catch (e) { console.error('Error saving language:', e); }
   };
 
-  // פונקציות המוק (Mock) שביקשת לשלב הפיתוח: מקבלות את התשלום ב"כאילו" ומעדכנות את האפליקציה
+  // פונקציית הפיתוח עודכנה לשמור גם את שם החבילה
   const mockPurchaseSuccess = async (plan: string) => {
     alert(`Dev Mode: Unlocking ${plan}...`);
+    setCurrentPlan(plan);
+    await AsyncStorage.setItem(`@plan_${user?.id}`, plan);
+
     if (plan === 'PRO') {
       await purchasePackage('unlimited');
     } else if (plan === 'Basic') {
@@ -115,12 +123,14 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     }
   };
 
-  // כפתור איפוס סודי למפתחים (מחזיר אותך למצב חינמי רגיל)
+  // איפוס גם של החבילה השמורה
   const resetToFree = async () => {
     alert('Dev Mode: Resetting to Free Account...');
     setIsPro(false);
+    setCurrentPlan('Free');
     setMaxMessages(INITIAL_FREE_LIMIT);
     setMessageCount(0);
+    await AsyncStorage.setItem(`@plan_${user?.id}`, 'Free');
     await AsyncStorage.setItem(`@is_pro_${user?.id}`, 'false');
     await AsyncStorage.setItem(`@max_msg_${user?.id}`, INITIAL_FREE_LIMIT.toString());
     await AsyncStorage.setItem(`@msg_count_${user?.id}`, '0');
@@ -130,9 +140,9 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     <PaywallContext.Provider value={{ 
       messageCount, maxMessages, incrementMessageCount, 
       hasReachedLimit: !isPro && messageCount >= maxMessages, 
-      isPro, purchasePackage,
+      isPro, currentPlan, purchasePackage,
       chatLanguage, changeLanguage,
-      mockPurchaseSuccess, resetToFree // חושפים את הפונקציות כדי שה-Modal יכיר אותן
+      mockPurchaseSuccess, resetToFree 
     }}>
       {children}
     </PaywallContext.Provider>

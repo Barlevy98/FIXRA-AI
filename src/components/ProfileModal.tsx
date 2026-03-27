@@ -22,8 +22,9 @@ const LANGUAGES = [
 export default function ProfileModal({ visible, onClose, onOpenPaywall }: ProfileModalProps) {
   const { user } = useUser();
   const { signOut } = useAuth();
-  // הורדנו מפה את messageCount ו-maxMessages כי אנחנו כבר לא סופרים!
-  const { isPro, chatLanguage, changeLanguage, resetToFree } = usePaywall();
+  
+  // הוספנו את המשיכה של currentPlan
+  const { isPro, currentPlan, chatLanguage, changeLanguage, resetToFree } = usePaywall();
   
   const [showLangMenu, setShowLangMenu] = useState(false);
 
@@ -79,7 +80,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
               <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress}</Text>
             </View>
 
-            {/* --- אזור הסטטוס הפרימיום החדש (ללא ספירת הודעות) --- */}
+            {/* --- אזור הסטטוס הפרימיום החדש --- */}
             <View style={styles.cardWrapper}>
               <Text style={styles.sectionTitle}>{t.profileStatus}</Text>
               
@@ -98,8 +99,13 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                     <Ionicons name="cube-outline" size={24} color="#aaaaaa" />
                     <Text style={styles.freeTitle}>CURRENT PLAN</Text>
                   </View>
-                  <Text style={styles.statsTextPro}>Basic Plan</Text>
-                  <Text style={styles.statsText}>Limited Features</Text>
+                  {/* השם מתעדכן דינאמית לפי הסטייט */}
+                  <Text style={styles.statsTextPro}>
+                    {currentPlan === 'Free' ? 'Free Plan' : `${currentPlan} Plan`}
+                  </Text>
+                  <Text style={styles.statsText}>
+                    {currentPlan === 'Free' ? 'Limited Features' : 'Enhanced Features'}
+                  </Text>
                 </View>
               )}
             </View>
@@ -137,7 +143,8 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
               <Text style={styles.logoutButtonText}>{t.profileLogout}</Text>
             </TouchableOpacity>
 
-            {__DEV__ && isPro && (
+            {/* כפתור איפוס שמוצג רק בסביבת פיתוח */}
+            {__DEV__ && (
               <TouchableOpacity onPress={resetToFree} style={{ marginTop: 10, padding: 10 }}>
                 <Text style={{ color: '#555', textAlign: 'center', fontWeight: 'bold' }}>[Dev: Reset to Free Plan]</Text>
               </TouchableOpacity>
@@ -145,7 +152,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
 
           </View>
 
-          {/* --- חלון בחירת השפה הקופץ (Bottom Sheet Style) --- */}
+          {/* --- חלון בחירת השפה הקופץ --- */}
           <Modal animationType="slide" transparent={true} visible={showLangMenu} onRequestClose={() => setShowLangMenu(false)}>
             <View style={styles.bottomSheetOverlay}>
               <View style={styles.bottomSheet}>
