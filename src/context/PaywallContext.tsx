@@ -10,7 +10,7 @@ type PaywallContextType = {
   incrementMessageCount: () => Promise<void>;
   hasReachedLimit: boolean;
   isPro: boolean;
-  currentPlan: string; // הוספנו את החבילה הנוכחית לטייפ
+  currentPlan: string; 
   purchasePackage: (plan: '20' | '50' | 'unlimited') => Promise<void>;
   chatLanguage: string;
   changeLanguage: (lang: string) => Promise<void>;
@@ -25,7 +25,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
   const [messageCount, setMessageCount] = useState(0);
   const [maxMessages, setMaxMessages] = useState(INITIAL_FREE_LIMIT);
   const [isPro, setIsPro] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<string>('Free'); // ברירת המחדל היא Free
+  const [currentPlan, setCurrentPlan] = useState<string>('Free'); 
   const [chatLanguage, setChatLanguage] = useState('English'); 
 
   useEffect(() => {
@@ -37,7 +37,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
 
   const loadUserData = async () => {
     try {
-      // טעינת החבילה הנוכחית מהזיכרון
       const savedPlan = await AsyncStorage.getItem(`@plan_${user?.id}`);
       if (savedPlan) setCurrentPlan(savedPlan);
 
@@ -93,10 +92,16 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         setIsPro(true);
         await AsyncStorage.setItem(`@is_pro_${user?.id}`, 'true');
       } else {
-        const addedMessages = plan === '20' ? 20 : 50;
-        const newMax = maxMessages + addedMessages;
+        // דורסים את המגבלה החדשה ל-20 או 50 (במקום להוסיף לקיים)
+        const newMax = plan === '20' ? 20 : 50;
         setMaxMessages(newMax);
         await AsyncStorage.setItem(`@max_msg_${user?.id}`, newMax.toString());
+        
+        // מאפסים את המונה לאפס ולזמן הנוכחי כדי שיתחיל להשתמש בחבילה מיד
+        setMessageCount(0);
+        const now = Date.now();
+        await AsyncStorage.setItem(`@msg_count_${user?.id}`, '0');
+        await AsyncStorage.setItem(`@last_reset_${user?.id}`, now.toString());
       }
     } catch (e) { console.error('Error purchasing package:', e); }
   };
@@ -108,7 +113,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     } catch (e) { console.error('Error saving language:', e); }
   };
 
-  // פונקציית הפיתוח עודכנה לשמור גם את שם החבילה
   const mockPurchaseSuccess = async (plan: string) => {
     alert(`Dev Mode: Unlocking ${plan}...`);
     setCurrentPlan(plan);
@@ -123,7 +127,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     }
   };
 
-  // איפוס גם של החבילה השמורה
   const resetToFree = async () => {
     alert('Dev Mode: Resetting to Free Account...');
     setIsPro(false);

@@ -61,7 +61,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                   subDesc="Limited Fixes"
                   onPress={() => handlePlanSelect('Basic')}
                 >
-                  <FeatureItem text="20 mission solves" />
+                  <FeatureItem text="20 mission solves / day" />
                   <FeatureItem text="AI help (10 image + text)" />
                   <FeatureItem text="1 guide link per solution" />
                   <FeatureItem text="Ads included" isCross />
@@ -77,7 +77,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                   onPress={() => handlePlanSelect('Advanced')}
                   isPopular
                 >
-                  <FeatureItem text="50 mission solves" />
+                  <FeatureItem text="50 mission solves / day" />
                   <FeatureItem text="AI help (image + text input)" />
                   <FeatureItem text="3 guide links per solution" />
                   <FeatureItem text="Priority access" isCross />
@@ -93,7 +93,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                   onPress={() => handlePlanSelect('PRO')}
                   isPro={true}
                   isAlreadyPro={isPro}
-                  footerText="Join 10,000 players already using Fixra" // הוספנו את הדיסקליימר כאן
+                  footerText="Join 10,000 players already using Fixra"
                 >
                   <FeatureItem text="Unlimited mission solves" />
                   <FeatureItem text="AI help (image + text + video)" />
@@ -154,11 +154,10 @@ interface PlanCardProps {
   isPopular?: boolean;
   isPro?: boolean;
   isAlreadyPro?: boolean;
-  footerText?: string; // הוספנו תמיכה בטקסט תחתון
+  footerText?: string;
 }
 
 function PlanCard({ title, price, subDesc, badgeText, children, onPress, isPopular, isPro: isProCard, isAlreadyPro, footerText }: PlanCardProps) {
-  // סטייט שמנהל אם החבילה פתוחה או סגורה (ברירת מחדל: סגורה)
   const [isExpanded, setIsExpanded] = useState(false);
 
   const cardStyles = [
@@ -173,7 +172,6 @@ function PlanCard({ title, price, subDesc, badgeText, children, onPress, isPopul
     isProCard && {color: '#00e5ff'}
   ];
 
-  // הופכים את הילדים למערך כדי לשלוט בהם לפי אינדקס
   const childrenArray = React.Children.toArray(children);
 
   return (
@@ -185,11 +183,9 @@ function PlanCard({ title, price, subDesc, badgeText, children, onPress, isPopul
       )}
       <LinearGradient colors={['rgba(25, 25, 25, 0.5)', 'rgba(0, 0, 0, 0.8)']} style={cardStyles}>
         
-        {/* אזור הלחיצה כדי לפתוח/לסגור את החבילה */}
         <TouchableOpacity activeOpacity={0.7} onPress={() => setIsExpanded(!isExpanded)} style={styles.packHeaderClickable}>
           <View style={styles.titleRow}>
             <Text style={styles.packTitle}>{title} <Text style={styles.packSubDescHeader}>— {subDesc}</Text></Text>
-            {/* החץ שמשתנה לפי הסטייט */}
             <Ionicons 
               name={isExpanded ? "chevron-up" : "chevron-down"} 
               size={22} 
@@ -204,7 +200,6 @@ function PlanCard({ title, price, subDesc, badgeText, children, onPress, isPopul
           </View>
         </TouchableOpacity>
 
-        {/* מציג תמיד את 2 הפיצ'רים הראשונים, ואת השאר רק אם isExpanded הוא true */}
         <View style={styles.featuresListContainer}>
           {childrenArray.map((child, index) => {
             if (index < 2 || isExpanded) {
@@ -214,7 +209,6 @@ function PlanCard({ title, price, subDesc, badgeText, children, onPress, isPopul
           })}
         </View>
 
-        {/* כפתור הרכישה */}
         <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={{width: '100%', marginTop: 10}}>
           <LinearGradient colors={isProCard ? ['#ff00cc', '#3333ff'] : ['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionButton}>
             <Text style={styles.actionButtonText}>
@@ -223,7 +217,6 @@ function PlanCard({ title, price, subDesc, badgeText, children, onPress, isPopul
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* הדיסקליימר / טקסט תחתון - מוצג תמיד מתחת לכפתור אם הועבר */}
         {footerText && (
           <Text style={styles.packFooterText}>{footerText}</Text>
         )}
@@ -285,6 +278,28 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
 
   if (!isRendered) return null;
 
+  // הגדרת הטיימליין דינאמית לפי החבילה
+  let steps = [];
+  if (planName === 'Basic') {
+    steps = [
+      { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
+      { icon: "time-outline", title: "20 Daily Solves", desc: "Get 20 mission solves renewed every 24 hours." },
+      { icon: "shield-checkmark-outline", title: "Secure Payment", desc: "Safe and secure monthly billing.", isLast: true }
+    ];
+  } else if (planName === 'Advanced') {
+    steps = [
+      { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
+      { icon: "time-outline", title: "50 Daily Solves", desc: "Get 50 mission solves renewed every 24 hours." },
+      { icon: "shield-checkmark-outline", title: "Secure Payment", desc: "Safe and secure monthly billing.", isLast: true }
+    ];
+  } else {
+    steps = [
+      { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
+      { icon: "infinite-outline", title: "Unlimited Power", desc: "Never run out of solves. Truly unlimited." },
+      { icon: "shield-checkmark-outline", title: "Secure Payment", desc: "Safe and secure monthly billing.", isLast: true }
+    ];
+  }
+
   return (
     <View style={styles.checkoutOverlay}>
       <Animated.View style={[styles.checkoutSheet, { transform: [{ translateY: slideAnim }] }]}>
@@ -297,22 +312,15 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
         <Text style={styles.checkoutSubtitle}>You are about to activate the {planName} plan.</Text>
 
         <View style={styles.checkoutTimelineWrapper}>
-          <TimelineStep 
-            icon="lock-open-outline" 
-            title="Today: Level Up Instantly" 
-            desc="Instantly unlock ALL gaming mission solutions and expert guides." 
-          />
-          <TimelineStep 
-            icon="notifications-outline" 
-            title="In 2 Days: Renewal Reminder" 
-            desc="We'll send you a notification before your selected plan renews." 
-          />
-          <TimelineStep 
-            icon="ribbon-outline" 
-            title="In 3 Days: Billing Begins" 
-            desc="Secure billing starts for your chosen plan."
-            isLast
-          />
+          {steps.map((step, index) => (
+            <TimelineStep 
+              key={index}
+              icon={step.icon} 
+              title={step.title} 
+              desc={step.desc}
+              isLast={step.isLast}
+            />
+          ))}
         </View>
 
         <TouchableOpacity activeOpacity={0.8} onPress={onConfirm} style={{width: '100%'}}>
@@ -373,7 +381,6 @@ const styles = StyleSheet.create({
   actionButton: { width: '100%', paddingVertical: 15, borderRadius: 30, alignItems: 'center' },
   actionButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
 
-  // העיצוב לטקסט החדש שהוספנו
   packFooterText: { color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginTop: 12, fontStyle: 'italic', fontWeight: '500' },
 
   checkoutOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end', zIndex: 100 },
