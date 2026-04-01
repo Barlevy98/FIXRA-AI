@@ -22,14 +22,15 @@ export default function ChatScreen() {
   const { user } = useUser();
   const { getToken } = useAuth();
   
-  const { incrementMessageCount, hasReachedLimit, chatLanguage } = usePaywall();
+  const { incrementMessageCount, hasReachedLimit, chatLanguage, currentPlan } = usePaywall();
   
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [inputText, setInputText] = useState('');
   
-  const [selectedMedia, setSelectedMedia] = useState<{uri: string, type: 'image' | 'video', base64?: string, thumbnailUri?: string} | null>(null);
+  // עדכנו את סוג ה-base64 שיוכל לקבל גם מערך של מחרוזות עבור הוידאו
+  const [selectedMedia, setSelectedMedia] = useState<{uri: string, type: 'image' | 'video', base64?: string | string[], thumbnailUri?: string} | null>(null);
   
   const [isPaywallVisible, setIsPaywallVisible] = useState(false);
   const [isProfileVisible, setIsProfileVisible] = useState(false);
@@ -227,13 +228,36 @@ export default function ChatScreen() {
     }
   };
 
-  const processVideoThumbnail = async (videoUri: string) => {
+  // פונקציית העיבוד החדשה שמחלצת רצף של תמונות מהווידאו
+  const processVideoFrames = async (videoUri: string, duration?: number | null) => {
     try {
-      const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, { time: 2000 });
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' }); 
-      return { thumbnailUri: uri, base64 };
+      const framesToExtract = 5; // נוציא 5 תמונות (פריימים) לאורך הסרטון
+      const base64Frames: string[] = [];
+      let firstThumbnailUri = '';
+
+      // אם מאיזושהי סיבה לא קיבלנו את אורך הסרטון מ-Expo, נניח שהוא 5 שניות
+      const safeDuration = (duration && duration > 0) ? duration : 5000; 
+      const step = Math.floor(safeDuration / framesToExtract);
+
+      for (let i = 0; i < framesToExtract; i++) {
+        // לוקחים כל פעם חתיכה בטוחה בזמן (מוודאים שלא חורגים מהסוף)
+        const time = Math.min(i * step, safeDuration - 100); 
+        try {
+          const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, { time });
+          const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+          base64Frames.push(base64);
+          
+          if (i === 0) firstThumbnailUri = uri; // שומרים את הפריים הראשון עבור הממשק
+        } catch (frameError) {
+          console.warn(`Failed to extract frame at ${time}ms`, frameError);
+        }
+      }
+      
+      if (base64Frames.length === 0) return null;
+      
+      return { thumbnailUri: firstThumbnailUri, base64Array: base64Frames };
     } catch (e) {
-      console.warn("Thumbnail generation error:", e);
+      console.warn("Video processing error:", e);
       return null;
     }
   };
@@ -249,9 +273,10 @@ export default function ChatScreen() {
     if(!r.canceled) {
       const asset = r.assets[0];
       if (asset.type === 'video') {
-        const videoData = await processVideoThumbnail(asset.uri);
+        // קוראים לפונקציה החדשה שלנו עם ה-URI והאורך
+        const videoData = await processVideoFrames(asset.uri, asset.duration);
         if (videoData) {
-          setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64, thumbnailUri: videoData.thumbnailUri });
+          setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
         }
       } else {
         setSelectedMedia({ uri: asset.uri, type: 'image', base64: asset.base64 || undefined });
@@ -265,9 +290,10 @@ export default function ChatScreen() {
     if(!r.canceled) {
       const asset = r.assets[0];
       if (asset.type === 'video') {
-        const videoData = await processVideoThumbnail(asset.uri);
+        // קוראים לפונקציה החדשה שלנו גם כאן
+        const videoData = await processVideoFrames(asset.uri, asset.duration);
         if (videoData) {
-          setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64, thumbnailUri: videoData.thumbnailUri });
+          setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
         } else {
           Alert.alert("Error", "Could not process this video.");
         }
@@ -308,7 +334,7 @@ export default function ChatScreen() {
     updatedMsgs = [...updatedMsgs, { id: loadingId, sender: 'bot', isLoading: true }];
     updateCurrentSession(updatedMsgs);
 
-    const response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, messages);
+    const response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, messages, currentPlan);
     
     updatedMsgs = updatedMsgs.map(msg => msg.id === loadingId ? { id: loadingId, text: response.message, walkthroughData: response.walkthroughData, sender: 'bot' } : msg);
     
@@ -383,6 +409,43 @@ export default function ChatScreen() {
                   </View>
                 </TouchableOpacity>
               )}
+
+              {msg.walkthroughData.polygon && (
+                <TouchableOpacity style={[styles.stableCard, {height: 135}]} onPress={() => Linking.openURL(msg.walkthroughData!.polygon!.url)}>
+                  <View style={styles.stableRow}>
+                    <Image source={{ uri: msg.walkthroughData.polygon.thumbnail }} style={styles.stableLeftIcon} />
+                    <View style={styles.stableTextContainer}>
+                      <Text style={styles.solutionTitle} numberOfLines={3}>{msg.walkthroughData.polygon.title}</Text>
+                      <Text style={[styles.solutionSubtitle, {color: '#a032a8'}]}>🟣 Polygon Guide</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {msg.walkthroughData.mapgenie && (
+                <TouchableOpacity style={[styles.stableCard, {height: 135}]} onPress={() => Linking.openURL(msg.walkthroughData!.mapgenie!.url)}>
+                  <View style={styles.stableRow}>
+                    <Image source={{ uri: msg.walkthroughData.mapgenie.thumbnail }} style={styles.stableLeftIcon} />
+                    <View style={styles.stableTextContainer}>
+                      <Text style={styles.solutionTitle} numberOfLines={3}>{msg.walkthroughData.mapgenie.title}</Text>
+                      <Text style={[styles.solutionSubtitle, {color: '#32a852'}]}>🗺️ MapGenie Location</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {msg.walkthroughData.fextralife && (
+                <TouchableOpacity style={[styles.stableCard, {height: 135}]} onPress={() => Linking.openURL(msg.walkthroughData!.fextralife!.url)}>
+                  <View style={styles.stableRow}>
+                    <Image source={{ uri: msg.walkthroughData.fextralife.thumbnail }} style={styles.stableLeftIcon} />
+                    <View style={styles.stableTextContainer}>
+                      <Text style={styles.solutionTitle} numberOfLines={3}>{msg.walkthroughData.fextralife.title}</Text>
+                      <Text style={[styles.solutionSubtitle, {color: '#d4af37'}]}>⚔️ Fextralife Guide</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )}
+
             </View>
           )}
         </>
@@ -446,8 +509,6 @@ export default function ChatScreen() {
         <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={{ flex: 1 }}>
             
-            {/* התיקון: הורדנו את ה-TouchableWithoutFeedback! */}
-            {/* והוספנו onScrollBeginDrag ל-ScrollView כדי לסגור תפריטים מתי שמתחילים לגלול */}
             <ScrollView 
               style={styles.chatArea} 
               contentContainerStyle={{ padding: 15, paddingBottom: 20 }} 

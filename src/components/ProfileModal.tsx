@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Image, Platform } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Image, Platform, ScrollView, Alert } from 'react-native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,10 +23,11 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   const { user } = useUser();
   const { signOut } = useAuth();
   
-  // הוספנו את המשיכה של currentPlan
   const { isPro, currentPlan, chatLanguage, changeLanguage, resetToFree } = usePaywall();
   
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPlanDetails, setShowPlanDetails] = useState(false);
 
   const t = getTranslation(chatLanguage);
   
@@ -44,6 +45,39 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   const selectLanguage = (langId: string) => {
     changeLanguage(langId);
     setShowLangMenu(false);
+  };
+
+  // פונקציה מעודכנת עם הניסוח המשפטי המדויק
+  const handleCancelSubscription = () => {
+    Alert.alert(
+      "Cancel Subscription",
+      "Are you sure? Your plan will remain active until the end of your current billing cycle (one full month from your exact purchase date).\n\nThere are no refunds for partial months. You will not be charged again.",
+      [
+        { text: "Keep Plan", style: "cancel" },
+        { 
+          text: "Yes, Cancel", 
+          style: "destructive", 
+          onPress: () => {
+            resetToFree(); // בסביבת פרודקשן אמיתית זה רק מסמן ביטול חידוש בחנות
+            setShowPlanDetails(false);
+            Alert.alert("Cancelled", "Your subscription has been cancelled and will not renew next month.");
+          }
+        }
+      ]
+    );
+  };
+
+  const getActivePlanFeatures = () => {
+    switch(currentPlan) {
+      case 'PRO': 
+        return ['Unlimited mission solves', 'AI help (image + text + video)', 'All guide links included', 'No ads', 'Fastest results ⚡'];
+      case 'Advanced': 
+        return ['50 mission solves per day', 'AI help (image + text input)', '3 guide links per solution', 'Priority access'];
+      case 'Basic': 
+        return ['20 mission solves per day', 'AI help (10 image + text)', '1 guide link per solution'];
+      default: 
+        return ['Limited daily solves', 'Basic AI help', 'Ads included'];
+    }
   };
 
   return (
@@ -80,39 +114,43 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
               <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress}</Text>
             </View>
 
-            {/* --- אזור הסטטוס הפרימיום החדש --- */}
+            {/* --- אזור הסטטוס הפרימיום --- */}
             <View style={styles.cardWrapper}>
               <Text style={styles.sectionTitle}>{t.profileStatus}</Text>
               
-              {isPro ? (
-                <View style={[styles.glassCard, styles.glassCardPro]}>
-                  <View style={styles.cardHeader}>
-                    <Ionicons name="diamond" size={24} color="#00e5ff" />
-                    <Text style={styles.proTitle}>FIXRA PRO</Text>
+              <TouchableOpacity activeOpacity={0.8} onPress={() => setShowPlanDetails(true)}>
+                {isPro ? (
+                  <View style={[styles.glassCard, styles.glassCardPro]}>
+                    <View style={styles.cardHeader}>
+                      <Ionicons name="diamond" size={24} color="#00e5ff" />
+                      <Text style={styles.proTitle}>FIXRA PRO</Text>
+                    </View>
+                    <Text style={styles.statsTextPro}>Active Plan</Text>
+                    <Text style={styles.statsSubText}>Unlimited Access</Text>
+                    <Ionicons name="chevron-forward" size={20} color="#00e5ff" style={styles.chevronRightAbs} />
                   </View>
-                  <Text style={styles.statsTextPro}>Active Plan</Text>
-                  <Text style={styles.statsSubText}>Unlimited Access</Text>
-                </View>
-              ) : (
-                <View style={styles.glassCard}>
-                  <View style={styles.cardHeader}>
-                    <Ionicons name="cube-outline" size={24} color="#aaaaaa" />
-                    <Text style={styles.freeTitle}>CURRENT PLAN</Text>
+                ) : (
+                  <View style={styles.glassCard}>
+                    <View style={styles.cardHeader}>
+                      <Ionicons name="cube-outline" size={24} color="#aaaaaa" />
+                      <Text style={styles.freeTitle}>CURRENT PLAN</Text>
+                    </View>
+                    <Text style={styles.statsTextPro}>
+                      {currentPlan === 'Free' ? 'Free Plan' : `${currentPlan} Plan`}
+                    </Text>
+                    <Text style={styles.statsText}>
+                      {currentPlan === 'Free' ? 'Limited Features' : 'Enhanced Features'}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={20} color="#aaaaaa" style={styles.chevronRightAbs} />
                   </View>
-                  {/* השם מתעדכן דינאמית לפי הסטייט */}
-                  <Text style={styles.statsTextPro}>
-                    {currentPlan === 'Free' ? 'Free Plan' : `${currentPlan} Plan`}
-                  </Text>
-                  <Text style={styles.statsText}>
-                    {currentPlan === 'Free' ? 'Limited Features' : 'Enhanced Features'}
-                  </Text>
-                </View>
-              )}
+                )}
+              </TouchableOpacity>
             </View>
 
-            {/* --- אזור ההגדרות (שפה) --- */}
+            {/* --- אזור ההגדרות (שפה + תנאי שימוש) --- */}
             <View style={styles.cardWrapper}>
               <Text style={styles.sectionTitle}>{t.profileSettings}</Text>
+              
               <TouchableOpacity style={styles.settingRow} onPress={() => setShowLangMenu(true)}>
                 <View style={styles.settingRowLeft}>
                   <Ionicons name="globe-outline" size={22} color="#aaaaaa" style={{ marginRight: 10 }} />
@@ -120,6 +158,16 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                 </View>
                 <View style={styles.settingRowRight}>
                   <Text style={styles.currentLangText}>{currentLangObj.icon} {currentLangObj.label}</Text>
+                  <Ionicons name="chevron-forward" size={20} color="#555" />
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.settingRow, {marginTop: 10}]} onPress={() => setShowTermsModal(true)}>
+                <View style={styles.settingRowLeft}>
+                  <Ionicons name="document-text-outline" size={22} color="#aaaaaa" style={{ marginRight: 10 }} />
+                  <Text style={styles.settingRowText}>Terms & Privacy</Text>
+                </View>
+                <View style={styles.settingRowRight}>
                   <Ionicons name="chevron-forward" size={20} color="#555" />
                 </View>
               </TouchableOpacity>
@@ -143,16 +191,11 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
               <Text style={styles.logoutButtonText}>{t.profileLogout}</Text>
             </TouchableOpacity>
 
-            {/* כפתור איפוס שמוצג רק בסביבת פיתוח */}
-            {__DEV__ && (
-              <TouchableOpacity onPress={resetToFree} style={{ marginTop: 10, padding: 10 }}>
-                <Text style={{ color: '#555', textAlign: 'center', fontWeight: 'bold' }}>[Dev: Reset to Free Plan]</Text>
-              </TouchableOpacity>
-            )}
-
           </View>
 
-          {/* --- חלון בחירת השפה הקופץ --- */}
+          {/* --- חלונות קופצים (Modals) --- */}
+
+          {/* 1. מודל בחירת שפה */}
           <Modal animationType="slide" transparent={true} visible={showLangMenu} onRequestClose={() => setShowLangMenu(false)}>
             <View style={styles.bottomSheetOverlay}>
               <View style={styles.bottomSheet}>
@@ -174,6 +217,78 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                     {chatLanguage === item.id && <Ionicons name="checkmark" size={24} color="#ff00cc" style={{ marginLeft: 'auto' }} />}
                   </TouchableOpacity>
                 ))}
+              </View>
+            </View>
+          </Modal>
+
+          {/* 2. מודל תנאי שימוש */}
+          <Modal animationType="slide" transparent={true} visible={showTermsModal} onRequestClose={() => setShowTermsModal(false)}>
+            <View style={styles.bottomSheetOverlay}>
+              <View style={[styles.bottomSheet, { height: '80%' }]}>
+                <View style={styles.bottomSheetHeader}>
+                  <Text style={styles.bottomSheetTitle}>Terms & Privacy</Text>
+                  <TouchableOpacity onPress={() => setShowTermsModal(false)} style={styles.bottomSheetClose}>
+                    <Ionicons name="close-circle" size={28} color="#555" />
+                  </TouchableOpacity>
+                </View>
+                
+                <ScrollView showsVerticalScrollIndicator={true} style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.termsText}>
+                    <Text style={styles.boldText}>1. Acceptance of Terms</Text>{'\n'}
+                    By accessing and using FIXRA, you accept and agree to be bound by the terms and provision of this agreement.{'\n\n'}
+                    
+                    <Text style={styles.boldText}>2. Use of AI Features</Text>{'\n'}
+                    Our AI provides gaming hints and walkthroughs. While we strive for accuracy, FIXRA is not responsible for any progression loss or incorrect game guidance.{'\n\n'}
+                    
+                    <Text style={styles.boldText}>3. Privacy & Data</Text>{'\n'}
+                    We process your chat history and uploaded media solely to provide you with the best gaming solutions. We do not share your personal data with third parties.{'\n\n'}
+                    
+                    <Text style={styles.boldText}>4. Subscriptions & Payments</Text>{'\n'}
+                    Purchases made through FIXRA PRO or specific message packages are billed securely. You can manage your subscription at any time.{'\n\n'}
+                    
+                    <Text style={styles.boldText}>5. User Conduct</Text>{'\n'}
+                    You agree not to use the service for any unlawful purpose or to upload explicit or harmful content to the AI system.
+                  </Text>
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+
+          {/* 3. מודל פרטי חבילה וניהול מנוי */}
+          <Modal animationType="slide" transparent={true} visible={showPlanDetails} onRequestClose={() => setShowPlanDetails(false)}>
+            <View style={styles.bottomSheetOverlay}>
+              <View style={[styles.bottomSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : 20 }]}>
+                <View style={styles.bottomSheetHeader}>
+                  <Text style={styles.bottomSheetTitle}>Plan Details</Text>
+                  <TouchableOpacity onPress={() => setShowPlanDetails(false)} style={styles.bottomSheetClose}>
+                    <Ionicons name="close-circle" size={28} color="#555" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.planDetailsCard}>
+                  <Text style={styles.planDetailsTitle}>
+                    {currentPlan === 'Free' ? 'Free Plan' : `FIXRA ${currentPlan}`}
+                  </Text>
+                  <View style={styles.planFeaturesList}>
+                    {getActivePlanFeatures().map((feature, index) => (
+                      <View key={index} style={styles.planFeatureRow}>
+                        <Ionicons name="checkmark-circle" size={20} color="#00e5ff" style={{marginRight: 10}} />
+                        <Text style={styles.planFeatureText}>{feature}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                {currentPlan !== 'Free' ? (
+                  <TouchableOpacity style={styles.cancelPlanBtn} onPress={handleCancelSubscription}>
+                    <Text style={styles.cancelPlanBtnText}>Cancel Subscription</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={styles.upgradePlanBtn} onPress={() => { setShowPlanDetails(false); onClose(); onOpenPaywall(); }}>
+                    <Text style={styles.upgradePlanBtnText}>Upgrade Plan</Text>
+                  </TouchableOpacity>
+                )}
+                
               </View>
             </View>
           </Modal>
@@ -204,8 +319,9 @@ const styles = StyleSheet.create({
   cardWrapper: { width: '100%', marginBottom: 25 },
   sectionTitle: { color: '#aaaaaa', fontSize: 13, fontWeight: 'bold', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 },
   
-  glassCard: { padding: 20, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
+  glassCard: { padding: 20, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', position: 'relative' },
   glassCardPro: { borderColor: '#00e5ff', backgroundColor: 'rgba(0, 229, 255, 0.05)', borderWidth: 1.5 },
+  chevronRightAbs: { position: 'absolute', right: 20, top: '50%', transform: [{translateY: -10}] },
   
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   freeTitle: { color: '#aaaaaa', fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
@@ -236,9 +352,25 @@ const styles = StyleSheet.create({
   bottomSheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#333', paddingBottom: 15 },
   bottomSheetTitle: { color: '#ffffff', fontSize: 20, fontWeight: 'bold' },
   bottomSheetClose: { padding: 5 },
+  
   langOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 10, borderRadius: 15, marginBottom: 5 },
   langOptionActive: { backgroundColor: 'rgba(255, 0, 204, 0.1)' }, 
   langOptionIcon: { fontSize: 24, marginRight: 15 },
   langOptionText: { color: '#ffffff', fontSize: 18 },
-  langOptionTextActive: { color: '#ff00cc', fontWeight: 'bold' } 
+  langOptionTextActive: { color: '#ff00cc', fontWeight: 'bold' },
+
+  termsText: { color: '#cccccc', fontSize: 15, lineHeight: 24 },
+  boldText: { color: '#ffffff', fontWeight: 'bold', fontSize: 17 },
+
+  planDetailsCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, padding: 20, marginBottom: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  planDetailsTitle: { color: '#ffffff', fontSize: 22, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+  planFeaturesList: { marginTop: 10 },
+  planFeatureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  planFeatureText: { color: '#cccccc', fontSize: 15 },
+
+  cancelPlanBtn: { width: '100%', paddingVertical: 16, borderRadius: 15, backgroundColor: 'rgba(255, 68, 68, 0.1)', borderWidth: 1, borderColor: 'rgba(255, 68, 68, 0.4)', alignItems: 'center' },
+  cancelPlanBtnText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold' },
+  
+  upgradePlanBtn: { width: '100%', paddingVertical: 16, borderRadius: 15, backgroundColor: 'rgba(0, 229, 255, 0.1)', borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.4)', alignItems: 'center' },
+  upgradePlanBtnText: { color: '#00e5ff', fontSize: 16, fontWeight: 'bold' }
 });

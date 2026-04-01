@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AIResponse, MessageType } from '../types';
+import { MessageType } from '../types';
 import { getTranslation } from '../utils/translations'; 
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
@@ -9,38 +9,32 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 export async function fetchGameWalkthrough(
   userText: string,
-  media: { uri: string; type: 'image' | 'video'; base64?: string } | null,
+  media: { uri: string; type: 'image' | 'video'; base64?: string | string[] } | null, // שדרגנו את הטייפ לקבל מערך של base64
   language: string = 'English',
-  previousMessages: MessageType[] = [] 
-): Promise<{ message: string; walkthroughData?: MessageType['walkthroughData']; category: string }> {
+  previousMessages: MessageType[] = [],
+  userPlan: string = 'Basic'
+): Promise<{ message: string; walkthroughData?: any; category: string }> {
   try {
     const model = genAI.getGenerativeModel({ 
       model: 'gemini-2.5-flash',
-      systemInstruction: `You are an ELITE gaming AI assistant.
+      systemInstruction: `You are an ELITE gaming AI assistant and video analysis expert.
 Language to respond in: ${language}.
 
 CRITICAL RULES BASED ON INPUT TYPE:
-1. IMAGE ONLY: Act as an elite visual analysis AI. Identify the EXACT game and objective from the visual evidence.
-2. TEXT ONLY: Act as a highly precise gaming knowledge base. Rely strictly on the text and chat history.
-3. IMAGE + TEXT: Combine visual analysis with the user's specific text question.
-4. FOLLOW-UP QUESTIONS: ALWAYS use the exact game name established in the chat history.
+1. VIDEO ONLY (Array of Images): Act as a video analyst. Treat the input images as sequential frames from a short video clip. Analyze movement, progression, and state changes across the frames. Identify the game and objective.
+2. IMAGE ONLY (Single Image): Act as a visual recognition AI. Identify the game, mission, and objective from the visual evidence.
+3. TEXT ONLY: Rely strictly on gaming knowledge.
 
-MISSION NAMES VS NUMBERS (CRITICAL RULE):
-If the user asks for a mission by NUMBER (e.g., "mission 20"), YOU MUST TRANSLATE THIS NUMBER INTO THE OFFICIAL MISSION NAME (e.g., "The Jewel Store Job"). 
-NEVER use numbers like "Mission 20" in your search queries! YouTube and IGN will return wrong results if you use numbers. You MUST use ONLY the Official Mission Name.
-
-GOLDEN RULES FOR QUERIES:
-1. NEVER simplify names. Do not summarize 'Grand Theft Auto V' to 'GTA V'.
-2. DO NOT USE MISSION NUMBERS IN QUERIES. Use the exact Official Mission Name.
-3. IGN: Create a precise search query for IGN using the exact Game Name and Official Mission Name.
-
-Respond STRICTLY with a valid JSON object matching this exact structure:
+JSON RESPONSE FORMAT (STRICT):
 {
-  "message": "Direct, short and helpful solution or hint in ${language}.",
-  "youtubeQuery": "English search query: [Exact Game Name] + [Official Mission Name] + 'walkthrough'",
-  "wikiQuery": "English search query: [Exact Game Name] + [Official Mission Name] + 'fandom wiki'",
-  "ignQuery": "English search query: [Exact Game Name] + [Official Mission Name] + 'walkthrough guide'",
-  "category": "The official Game Name (e.g., 'GTA V', 'Elden Ring')"
+  "message": "Direct, short and helpful solution or hint in ${language}. If analyzing a video, explicitly mention what you observed in the clip.",
+  "youtubeQuery": "[Exact Game Name] [Official Mission Name] walkthrough",
+  "wikiQuery": "[Exact Game Name] [Official Mission Name]",
+  "ignQuery": "[Exact Game Name] [Official Mission Name]",
+  "polygonQuery": "[Exact Game Name] [Official Mission Name]",
+  "mapgenieQuery": "[Exact Game Name] [Item or Location]",
+  "fextralifeQuery": "[Exact Game Name] [Boss or Quest]",
+  "category": "The official Game Name"
 }`
     });
 
@@ -59,32 +53,48 @@ Respond STRICTLY with a valid JSON object matching this exact structure:
 
     const promptParts: any[] = [];
     
-    if (media && media.base64 && media.type === 'image') {
-      promptParts.push({
-        inlineData: {
-          data: media.base64,
-          mimeType: 'image/jpeg',
-        },
-      });
-      promptParts.push("Analyze this game screenshot carefully. Identify the game, the mission/location, and provide a walkthrough.");
+    // לוגיקה מעודכנת לטיפול במדיה (תמונה בודדת או רצף תמונות של וידאו)
+    if (media && media.base64) {
+      if (media.type === 'image' && typeof media.base64 === 'string') {
+        // טיפול בתמונה בודדת
+        promptParts.push({
+          inlineData: {
+            data: media.base64,
+            mimeType: 'image/jpeg',
+          },
+        });
+        promptParts.push("Analyze this game screenshot carefully.");
+      } else if (media.type === 'video' && Array.isArray(media.base64)) {
+        // טיפול ברצף תמונות של וידאו (מערך)
+        media.base64.forEach((base64Image, index) => {
+          promptParts.push({
+            inlineData: {
+              data: base64Image,
+              mimeType: 'image/jpeg',
+            },
+          });
+        });
+        promptParts.push("These images are sequential frames from a short video clip. Analyze them to understand the gameplay flow and give a walkthrough.");
+      }
     }
 
     if (userText) {
       promptParts.push(`User query: ${userText}`);
     }
 
-    promptParts.push("Remember to respond STRICTLY with a valid JSON object as instructed. Translate any mission numbers into official mission names for the search queries.");
+    promptParts.push("Remember to respond STRICTLY with a valid JSON as instructed.");
 
     const result = await chat.sendMessage(promptParts);
     const responseText = result.response.text();
     
+    // ... (שאר הקוד של ה-API של יוטיוב והקישורים נשאר אותו דבר) ...
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error("Invalid AI response format");
     }
     
     const aiResponseJSON: any = JSON.parse(jsonMatch[0]);
-    let walkthroughData: any = {}; 
+    let allAvailableLinks: any[] = [];
 
     // --- 1. YouTube API ---
     const ytQ = aiResponseJSON.youtubeQuery || '';
@@ -94,34 +104,91 @@ Respond STRICTLY with a valid JSON object matching this exact structure:
         const ytJson = await ytRes.json();
         if (ytJson.items && ytJson.items.length > 0) {
           const video = ytJson.items[0];
-          walkthroughData.youtube = {
-            videoId: video.id.videoId,
-            title: video.snippet.title,
-            thumbnail: video.snippet.thumbnails.high.url
-          };
+          allAvailableLinks.push({
+            type: 'youtube',
+            data: {
+              videoId: video.id.videoId,
+              title: video.snippet.title,
+              thumbnail: video.snippet.thumbnails.high.url
+            }
+          });
         }
       } catch(e) { console.error("YouTube Fetch Error:", e); }
     }
 
+    // --- הוספת פרמטר &udm=14 לכל החיפושים בגוגל כדי לקבל טקסט נקי ---
+
     // --- 2. Fandom Wiki ---
-    const wikiQ = aiResponseJSON.wikiQuery || '';
-    if (wikiQ) {
-      walkthroughData.wiki = {
-        title: "📖 Read Full Wiki Guide",
-        url: `https://duckduckgo.com/?q=${encodeURIComponent('!ducky ' + wikiQ)}`,
-        thumbnail: "https://logospng.org/download/fandom/fandom-256.png" 
-      };
+    if (aiResponseJSON.wikiQuery) {
+      allAvailableLinks.push({
+        type: 'wiki',
+        data: {
+          title: "📖 Read Full Wiki Guide",
+          url: `https://www.google.com/search?q=${encodeURIComponent('site:fandom.com ' + aiResponseJSON.wikiQuery)}&udm=14`,
+          thumbnail: "https://logospng.org/download/fandom/fandom-256.png" 
+        }
+      });
     }
 
-    // --- 3. IGN Search (גוגל המסונן שלנו במקום הניתוב השבור) ---
-    const ignQ = aiResponseJSON.ignQuery || '';
-    if (ignQ) {
-      walkthroughData.ign = {
-        title: "🕹️ Read IGN Walkthrough",
-        url: `https://www.google.com/search?q=${encodeURIComponent('site:ign.com ' + ignQ)}`,
-        thumbnail: "https://cdn-icons-png.flaticon.com/512/5260/5260498.png" 
-      };
+    // --- 3. IGN ---
+    if (aiResponseJSON.ignQuery) {
+      allAvailableLinks.push({
+        type: 'ign',
+        data: {
+          title: "🕹️ Read IGN Walkthrough",
+          url: `https://www.google.com/search?q=${encodeURIComponent('site:ign.com ' + aiResponseJSON.ignQuery)}&udm=14`,
+          thumbnail: "https://cdn-icons-png.flaticon.com/512/5260/5260498.png" 
+        }
+      });
     }
+
+    // --- 4. Polygon ---
+    if (aiResponseJSON.polygonQuery) {
+      allAvailableLinks.push({
+        type: 'polygon',
+        data: {
+          title: "🟣 Polygon Game Guide",
+          url: `https://www.google.com/search?q=${encodeURIComponent('site:polygon.com ' + aiResponseJSON.polygonQuery)}&udm=14`,
+          thumbnail: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Polygon_logo.svg/1200px-Polygon_logo.svg.png" 
+        }
+      });
+    }
+
+    // --- 5. MapGenie ---
+    if (aiResponseJSON.mapgenieQuery) {
+      allAvailableLinks.push({
+        type: 'mapgenie',
+        data: {
+          title: "🗺️ MapGenie Location",
+          url: `https://www.google.com/search?q=${encodeURIComponent('site:mapgenie.io ' + aiResponseJSON.mapgenieQuery)}&udm=14`,
+          thumbnail: "https://cdn.mapgenie.io/images/logo-icon.png" 
+        }
+      });
+    }
+
+    // --- 6. Fextralife ---
+    if (aiResponseJSON.fextralifeQuery) {
+      allAvailableLinks.push({
+        type: 'fextralife',
+        data: {
+          title: "⚔️ Fextralife Boss Guide",
+          url: `https://www.google.com/search?q=${encodeURIComponent('site:fextralife.com ' + aiResponseJSON.fextralifeQuery)}&udm=14`,
+          thumbnail: "https://fextralife.com/wp-content/uploads/2021/05/fextralife-logo-150x150.png" 
+        }
+      });
+    }
+
+    // --- חיתוך הקישורים לפי סוג החבילה ---
+    let allowedLinksCount = 2; // Default for Basic/Free
+    if (userPlan === 'Advanced') allowedLinksCount = 3;
+    if (userPlan === 'PRO') allowedLinksCount = 10; // All links
+
+    const finalLinks = allAvailableLinks.slice(0, allowedLinksCount);
+
+    let walkthroughData: any = {};
+    finalLinks.forEach(link => {
+      walkthroughData[link.type] = link.data;
+    });
 
     return {
       message: aiResponseJSON.message,

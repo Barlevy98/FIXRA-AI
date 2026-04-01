@@ -3,6 +3,7 @@
     "name": "FIXRA AI",
     "slug": "fixra-ai",
     "version": "1.0.0",
+    "scheme": "fixra",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",

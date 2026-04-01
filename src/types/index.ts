@@ -1,16 +1,19 @@
 export interface MessageType {
   id: string;
   text?: string;
+  sender: 'user' | 'bot';
   media?: string;
   mediaType?: 'image' | 'video';
-  sender: 'user' | 'bot';
   isLoading?: boolean;
   rating?: 'up' | 'down';
   walkthroughData?: {
-    youtube?: { videoId: string; title: string; thumbnail: string; };
-    wiki?: { title: string; url: string; thumbnail?: string; };
-    ign?: { title: string; url: string; thumbnail?: string; }; // <--- IGN במקום רדיט
-    twitch?: { title: string; url: string; thumbnail: string; streamer: string; };
+    youtube?: { videoId: string; title: string; thumbnail: string };
+    wiki?: { title: string; url: string; thumbnail: string };
+    ign?: { title: string; url: string; thumbnail: string };
+    // אלו השורות החדשות שצריך להוסיף:
+    polygon?: { title: string; url: string; thumbnail: string };
+    mapgenie?: { title: string; url: string; thumbnail: string };
+    fextralife?: { title: string; url: string; thumbnail: string };
   };
 }
 
