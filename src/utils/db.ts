@@ -7,9 +7,9 @@ export const saveChatSession = async (
   userId: string,
   title: string,
   messages: any[],
-  category?: string // <--- הוספנו את הקטגוריה לכאן
+  category?: string
 ) => {
-  const supabase = getAuthenticatedSupabase(clerkToken); // חיבור עם תעודה
+  const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
     .from('sessions')
     .upsert({
@@ -17,7 +17,7 @@ export const saveChatSession = async (
       user_id: userId,
       title: title,
       messages: messages,
-      category: category || 'General', // <--- שומרים את הקטגוריה (התיקייה) במסד הנתונים
+      category: category || 'General',
       updated_at: Date.now()
     });
 
@@ -31,7 +31,7 @@ export const saveChatSession = async (
 
 // מושכת את כל השיחות של משתמש ספציפי מהשרת (מאובטחת)
 export const getUserChatSessions = async (clerkToken: string, userId: string) => {
-  const supabase = getAuthenticatedSupabase(clerkToken); // חיבור עם תעודה
+  const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
     .from('sessions')
     .select('*')
@@ -44,4 +44,76 @@ export const getUserChatSessions = async (clerkToken: string, userId: string) =>
   }
   
   return data;
+};
+
+// ==========================================
+// פונקציות חדשות עבור סטטוס משתמש (מדריך וכו')
+// ==========================================
+
+// בודקת אם המשתמש כבר ראה את המדריך
+export const getUserTutorialStatus = async (clerkToken: string, userId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('has_seen_tutorial')
+    .eq('user_id', userId)
+    .single();
+
+  // אם הפרופיל לא קיים עדיין (שגיאה PGRST116), זה אומר שזה משתמש חדש והוא בטוח לא ראה את המדריך
+  if (error && error.code !== 'PGRST116') {
+    console.error('Error fetching tutorial status:', error.message);
+    return false;
+  }
+
+  return data?.has_seen_tutorial || false;
+};
+
+// מעדכנת בשרת שהמשתמש סיים לראות את המדריך
+export const markTutorialAsSeen = async (clerkToken: string, userId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({
+      user_id: userId,
+      has_seen_tutorial: true,
+      updated_at: Date.now()
+    });
+
+  if (error) {
+    console.error('Error updating tutorial status:', error.message);
+    return false;
+  }
+
+  return true;
+};
+// ==========================================
+// פונקציות ניהול מנויים וקרדיטים (Paywall)
+// ==========================================
+
+export const getUserSubscriptionData = async (clerkToken: string, userId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('message_count, max_messages, current_plan, is_pro, last_reset')
+    .eq('user_id', userId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Error fetching subscription data:', error.message);
+    return null;
+  }
+  return data;
+};
+
+export const updateSubscriptionData = async (clerkToken: string, userId: string, updates: any) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({ user_id: userId, ...updates, updated_at: Date.now() });
+
+  if (error) {
+    console.error('Error updating subscription data:', error.message);
+    return false;
+  }
+  return true;
 };

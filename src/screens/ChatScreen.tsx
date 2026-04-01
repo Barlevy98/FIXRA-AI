@@ -12,8 +12,9 @@ import { fetchGameWalkthrough } from '../services/aiService';
 import { usePaywall } from '../context/PaywallContext';
 import PaywallModal from '../components/PaywallModal';
 import ProfileModal from '../components/ProfileModal';
+import TutorialModal from '../components/TutorialModal';
 import { getTranslation } from '../utils/translations';
-import { saveChatSession, getUserChatSessions } from '../utils/db'; 
+import { saveChatSession, getUserChatSessions, getUserTutorialStatus, markTutorialAsSeen } from '../utils/db';
 
 const PREVIEW_HEIGHT = 80;
 const screenWidth = Dimensions.get('window').width;
@@ -29,14 +30,15 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [inputText, setInputText] = useState('');
   
-  // עדכנו את סוג ה-base64 שיוכל לקבל גם מערך של מחרוזות עבור הוידאו
   const [selectedMedia, setSelectedMedia] = useState<{uri: string, type: 'image' | 'video', base64?: string | string[], thumbnailUri?: string} | null>(null);
   
   const [isPaywallVisible, setIsPaywallVisible] = useState(false);
   const [isProfileVisible, setIsProfileVisible] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  
   const [isAttachMenuVisible, setIsAttachMenuVisible] = useState(false);
+  
+  const [isTutorialVisible, setIsTutorialVisible] = useState(false);
+  const [hasCheckedTutorial, setHasCheckedTutorial] = useState(false);
   
   const [expandedFolders, setExpandedFolders] = useState<string[]>(['General']);
   
@@ -57,6 +59,41 @@ export default function ChatScreen() {
     setExpandedFolders(prev => 
       prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]
     );
+  };
+
+  useEffect(() => {
+    const checkTutorial = async () => {
+      if (user?.id && !hasCheckedTutorial) {
+        try {
+          const token = await getToken({ template: 'supabase' });
+          if (token) {
+            const hasSeen = await getUserTutorialStatus(token, user.id);
+            if (!hasSeen) {
+              setIsTutorialVisible(true);
+            }
+          }
+        } catch (e) {
+          console.error('Error checking tutorial status', e);
+        } finally {
+          setHasCheckedTutorial(true);
+        }
+      }
+    };
+    checkTutorial();
+  }, [user, hasCheckedTutorial]);
+
+  const handleCloseTutorial = async () => {
+    setIsTutorialVisible(false);
+    if (user?.id) {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        if (token) {
+          await markTutorialAsSeen(token, user.id);
+        }
+      } catch(e) {
+         console.error('Error marking tutorial as seen', e);
+      }
+    }
   };
 
   useEffect(() => {
@@ -228,33 +265,28 @@ export default function ChatScreen() {
     }
   };
 
-  // פונקציית העיבוד החדשה שמחלצת רצף של תמונות מהווידאו
   const processVideoFrames = async (videoUri: string, duration?: number | null) => {
     try {
-      const framesToExtract = 5; // נוציא 5 תמונות (פריימים) לאורך הסרטון
+      const framesToExtract = 5; 
       const base64Frames: string[] = [];
       let firstThumbnailUri = '';
 
-      // אם מאיזושהי סיבה לא קיבלנו את אורך הסרטון מ-Expo, נניח שהוא 5 שניות
       const safeDuration = (duration && duration > 0) ? duration : 5000; 
       const step = Math.floor(safeDuration / framesToExtract);
 
       for (let i = 0; i < framesToExtract; i++) {
-        // לוקחים כל פעם חתיכה בטוחה בזמן (מוודאים שלא חורגים מהסוף)
         const time = Math.min(i * step, safeDuration - 100); 
         try {
           const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, { time });
           const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
           base64Frames.push(base64);
-          
-          if (i === 0) firstThumbnailUri = uri; // שומרים את הפריים הראשון עבור הממשק
+          if (i === 0) firstThumbnailUri = uri; 
         } catch (frameError) {
           console.warn(`Failed to extract frame at ${time}ms`, frameError);
         }
       }
       
       if (base64Frames.length === 0) return null;
-      
       return { thumbnailUri: firstThumbnailUri, base64Array: base64Frames };
     } catch (e) {
       console.warn("Video processing error:", e);
@@ -273,7 +305,6 @@ export default function ChatScreen() {
     if(!r.canceled) {
       const asset = r.assets[0];
       if (asset.type === 'video') {
-        // קוראים לפונקציה החדשה שלנו עם ה-URI והאורך
         const videoData = await processVideoFrames(asset.uri, asset.duration);
         if (videoData) {
           setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
@@ -290,7 +321,6 @@ export default function ChatScreen() {
     if(!r.canceled) {
       const asset = r.assets[0];
       if (asset.type === 'video') {
-        // קוראים לפונקציה החדשה שלנו גם כאן
         const videoData = await processVideoFrames(asset.uri, asset.duration);
         if (videoData) {
           setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
@@ -460,11 +490,32 @@ export default function ChatScreen() {
         
         <Animated.View style={[styles.sideMenu, { transform: [{ translateX: slideAnim }] }]}>
           <View style={styles.menuContent}>
+            
             <TouchableOpacity activeOpacity={0.8} onPress={createNewSession}>
               <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.newChatBtn}>
                 <Text style={styles.newChatBtnText}>{t.newChat}</Text>
               </LinearGradient>
             </TouchableOpacity>
+
+            <View style={styles.menuTopActions}>
+              <TouchableOpacity style={styles.menuActionItem} onPress={() => { toggleMenu(); setIsTutorialVisible(true); }}>
+                <View style={[styles.menuActionCircle, { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
+                  <Ionicons name="book-outline" size={26} color="#ffffff" />
+                </View>
+                <Text style={styles.menuActionText}>Tutorial</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuActionItem} onPress={() => { toggleMenu(); setIsPaywallVisible(true); }}>
+                <View style={[styles.menuActionCircle, { backgroundColor: 'rgba(138, 43, 226, 0.15)' }]}>
+                  <Image 
+                    source={require('../../assets/icon.png')} 
+                    style={{ width: 28, height: 28, resizeMode: 'contain' }} 
+                  />
+                </View>
+                <Text style={[styles.menuActionText, { color: '#b19cd9' }]}>Upgrade</Text>
+              </TouchableOpacity>
+            </View>
+
             <Text style={styles.menuSectionTitle}>{t.historyTitle}</Text>
             
             <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
@@ -617,6 +668,8 @@ export default function ChatScreen() {
 
         <PaywallModal visible={isPaywallVisible} onClose={() => setIsPaywallVisible(false)} />
         <ProfileModal visible={isProfileVisible} onClose={() => setIsProfileVisible(false)} onOpenPaywall={() => setIsPaywallVisible(true)} />
+        <TutorialModal visible={isTutorialVisible} onClose={handleCloseTutorial} />
+        
       </SafeAreaView>
     </LinearGradient>
   );
@@ -629,8 +682,15 @@ const styles = StyleSheet.create({
   
   sideMenu: { position: 'absolute', top: 0, bottom: 0, width: screenWidth * 0.75, backgroundColor: 'rgba(10, 0, 38, 0.95)', zIndex: 100, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)', padding: 20 },
   menuContent: { marginTop: 60, flex: 1 },
-  newChatBtn: { padding: 15, borderRadius: 15, alignItems: 'center', marginBottom: 25 },
+  
+  newChatBtn: { padding: 15, borderRadius: 15, alignItems: 'center', marginBottom: 20 },
   newChatBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
+
+  menuTopActions: { flexDirection: 'row', justifyContent: 'flex-start', gap: 20, marginBottom: 25, paddingHorizontal: 5 },
+  menuActionItem: { alignItems: 'center' },
+  menuActionCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  menuActionText: { color: '#aaaaaa', fontSize: 12, fontWeight: '600' },
+
   menuSectionTitle: { color: '#00e5ff', fontSize: 13, fontWeight: 'bold', marginBottom: 15, textAlign: 'left', letterSpacing: 1 },
   historyList: { flex: 1, marginBottom: 20 },
   folderContainer: { marginBottom: 10 },

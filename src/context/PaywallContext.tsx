@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useUser } from '@clerk/clerk-expo';
+import { useUser, useAuth } from '@clerk/clerk-expo';
+import { getUserSubscriptionData, updateSubscriptionData } from '../utils/db'; // הייבוא החדש שלנו
 
 const INITIAL_FREE_LIMIT = 3;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 type PaywallContextType = {
   messageCount: number;
@@ -22,6 +24,8 @@ const PaywallContext = createContext<PaywallContextType | undefined>(undefined);
 
 export const PaywallProvider = ({ children }: { children: React.ReactNode }) => {
   const { user } = useUser();
+  const { getToken } = useAuth(); // הבאנו את הטוקן של Clerk
+  
   const [messageCount, setMessageCount] = useState(0);
   const [maxMessages, setMaxMessages] = useState(INITIAL_FREE_LIMIT);
   const [isPro, setIsPro] = useState(false);
@@ -29,80 +33,118 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
   const [chatLanguage, setChatLanguage] = useState('English'); 
 
   useEffect(() => {
+    // שפה עדיין שומרים מקומית כי זה תלוי במכשיר
     AsyncStorage.getItem('@app_language').then(savedLang => {
       if (savedLang) setChatLanguage(savedLang);
     });
+    
     if (user) loadUserData();
   }, [user]);
 
+  // טעינת נתונים ישירות מ-Supabase
   const loadUserData = async () => {
+    if (!user?.id) return;
+    
     try {
-      const savedPlan = await AsyncStorage.getItem(`@plan_${user?.id}`);
-      if (savedPlan) setCurrentPlan(savedPlan);
+      const token = await getToken({ template: 'supabase' });
+      if (!token) return;
 
-      const proStatus = await AsyncStorage.getItem(`@is_pro_${user?.id}`);
-      if (proStatus === 'true') setIsPro(true);
-
-      const maxMsg = await AsyncStorage.getItem(`@max_msg_${user?.id}`);
-      if (maxMsg) setMaxMessages(parseInt(maxMsg, 10));
-
-      const lastResetStr = await AsyncStorage.getItem(`@last_reset_${user?.id}`);
-      const countStr = await AsyncStorage.getItem(`@msg_count_${user?.id}`);
+      const data = await getUserSubscriptionData(token, user.id);
       const now = Date.now();
 
-      if (lastResetStr) {
-        const lastReset = parseInt(lastResetStr, 10);
-        if (now - lastReset >= 24 * 60 * 60 * 1000) {
-          setMessageCount(0);
-          await AsyncStorage.setItem(`@msg_count_${user?.id}`, '0');
-          await AsyncStorage.setItem(`@last_reset_${user?.id}`, now.toString());
-        } else {
-          if (countStr) setMessageCount(parseInt(countStr, 10));
+      if (data) {
+        let currentCount = data.message_count || 0;
+        let lastReset = data.last_reset || now;
+
+        // אם עברו 30 יום מהאיפוס האחרון - נאפס גם בסטייט וגם בשרת
+        if (now - lastReset >= THIRTY_DAYS_MS) {
+          currentCount = 0;
+          lastReset = now;
+          await updateSubscriptionData(token, user.id, {
+            message_count: 0,
+            last_reset: now
+          });
         }
+
+        setMessageCount(currentCount);
+        setMaxMessages(data.max_messages ?? INITIAL_FREE_LIMIT);
+        setIsPro(data.is_pro || false);
+        setCurrentPlan(data.current_plan || 'Free');
+
       } else {
-        await AsyncStorage.setItem(`@last_reset_${user?.id}`, now.toString());
-        if (countStr) setMessageCount(parseInt(countStr, 10));
+        // אם המשתמש פותח את האפליקציה פעם ראשונה ואין לו שורה בטבלה
+        await updateSubscriptionData(token, user.id, {
+          message_count: 0,
+          max_messages: INITIAL_FREE_LIMIT,
+          current_plan: 'Free',
+          is_pro: false,
+          last_reset: now
+        });
+        setMessageCount(0);
+        setMaxMessages(INITIAL_FREE_LIMIT);
+        setIsPro(false);
+        setCurrentPlan('Free');
       }
     } catch (e) {
-      console.error('Error loading user data:', e);
+      console.error('Error loading user data from DB:', e);
     }
   };
 
+  // העלאת המונה וסנכרון מול השרת
   const incrementMessageCount = async () => {
+    if (!user?.id) return;
     try {
-      const now = Date.now();
-      const lastResetStr = await AsyncStorage.getItem(`@last_reset_${user?.id}`);
-      let lastReset = lastResetStr ? parseInt(lastResetStr, 10) : now;
+      const token = await getToken({ template: 'supabase' });
+      if (!token) return;
 
-      if (now - lastReset >= 24 * 60 * 60 * 1000) {
-        setMessageCount(1);
-        await AsyncStorage.setItem(`@msg_count_${user?.id}`, '1');
-        await AsyncStorage.setItem(`@last_reset_${user?.id}`, now.toString());
+      const data = await getUserSubscriptionData(token, user.id);
+      const now = Date.now();
+      let lastReset = data?.last_reset || now;
+      let newCount = (data?.message_count || 0);
+
+      // מוודאים שוב שעברו 30 יום לפני שמעלים
+      if (now - lastReset >= THIRTY_DAYS_MS) {
+        newCount = 1;
+        lastReset = now;
       } else {
-        const newCount = messageCount + 1;
-        setMessageCount(newCount);
-        await AsyncStorage.setItem(`@msg_count_${user?.id}`, newCount.toString());
+        newCount += 1;
       }
-    } catch (e) { console.error('Error saving message count:', e); }
+
+      setMessageCount(newCount);
+      // מעדכנים בענן
+      await updateSubscriptionData(token, user.id, {
+        message_count: newCount,
+        last_reset: lastReset
+      });
+    } catch (e) { console.error('Error saving message count to DB:', e); }
   };
 
+  // רכישת חבילה ועדכון השרת
   const purchasePackage = async (plan: '20' | '50' | 'unlimited') => {
+    if (!user?.id) return;
     try {
+      const token = await getToken({ template: 'supabase' });
+      if (!token) return;
+
+      const now = Date.now();
+      let updates: any = {};
+
       if (plan === 'unlimited') {
         setIsPro(true);
-        await AsyncStorage.setItem(`@is_pro_${user?.id}`, 'true');
+        updates = { is_pro: true };
       } else {
-        // דורסים את המגבלה החדשה ל-20 או 50 (במקום להוסיף לקיים)
         const newMax = plan === '20' ? 20 : 50;
         setMaxMessages(newMax);
-        await AsyncStorage.setItem(`@max_msg_${user?.id}`, newMax.toString());
-        
-        // מאפסים את המונה לאפס ולזמן הנוכחי כדי שיתחיל להשתמש בחבילה מיד
         setMessageCount(0);
-        const now = Date.now();
-        await AsyncStorage.setItem(`@msg_count_${user?.id}`, '0');
-        await AsyncStorage.setItem(`@last_reset_${user?.id}`, now.toString());
+        
+        updates = {
+          max_messages: newMax,
+          message_count: 0,
+          last_reset: now
+        };
       }
+
+      await updateSubscriptionData(token, user.id, updates);
     } catch (e) { console.error('Error purchasing package:', e); }
   };
 
@@ -113,10 +155,17 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     } catch (e) { console.error('Error saving language:', e); }
   };
 
+  // פונקציית דמה לרכישות שמדמה רכישה דרך השרת
   const mockPurchaseSuccess = async (plan: string) => {
     alert(`Dev Mode: Unlocking ${plan}...`);
     setCurrentPlan(plan);
-    await AsyncStorage.setItem(`@plan_${user?.id}`, plan);
+    
+    if (user?.id) {
+       const token = await getToken({ template: 'supabase' });
+       if (token) {
+           await updateSubscriptionData(token, user.id, { current_plan: plan });
+       }
+    }
 
     if (plan === 'PRO') {
       await purchasePackage('unlimited');
@@ -127,16 +176,25 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     }
   };
 
+  // איפוס לחינמי שמסנכרן בחזרה לשרת
   const resetToFree = async () => {
     alert('Dev Mode: Resetting to Free Account...');
     setIsPro(false);
     setCurrentPlan('Free');
     setMaxMessages(INITIAL_FREE_LIMIT);
     setMessageCount(0);
-    await AsyncStorage.setItem(`@plan_${user?.id}`, 'Free');
-    await AsyncStorage.setItem(`@is_pro_${user?.id}`, 'false');
-    await AsyncStorage.setItem(`@max_msg_${user?.id}`, INITIAL_FREE_LIMIT.toString());
-    await AsyncStorage.setItem(`@msg_count_${user?.id}`, '0');
+    
+    if (user?.id) {
+       const token = await getToken({ template: 'supabase' });
+       if (token) {
+          await updateSubscriptionData(token, user.id, {
+              current_plan: 'Free',
+              is_pro: false,
+              max_messages: INITIAL_FREE_LIMIT,
+              message_count: 0
+          });
+       }
+    }
   };
 
   return (
