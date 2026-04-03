@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, SafeAreaView, Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useUser } from '@clerk/clerk-expo';
+import { useUser, useAuth } from '@clerk/clerk-expo'; // הוספנו את useAuth
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { getUserTosStatus, markTosAsAccepted } from '../utils/db'; // מייבאים את הפונקציות מהשרת
 
 export default function TermsModal() {
   const { user } = useUser();
+  const { getToken } = useAuth(); // משתמשים בזה כדי לקבל גישה ל-Supabase
   const [isVisible, setIsVisible] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
 
@@ -14,10 +15,13 @@ export default function TermsModal() {
     const checkTermsAccepted = async () => {
       if (user?.id) {
         try {
-          const hasAccepted = await AsyncStorage.getItem(`@accepted_tos_${user.id}`);
-          // אם הוא לא אישר בעבר, נציג לו את המודל
-          if (hasAccepted !== 'true') {
-            setIsVisible(true);
+          const token = await getToken({ template: 'supabase' });
+          if (token) {
+            const hasAccepted = await getUserTosStatus(token, user.id);
+            // אם הוא לא אישר בעבר בשרת, נציג לו את המודל
+            if (!hasAccepted) {
+              setIsVisible(true);
+            }
           }
         } catch (error) {
           console.error('Error checking TOS:', error);
@@ -32,9 +36,12 @@ export default function TermsModal() {
     if (!isChecked || !user?.id) return;
 
     try {
-      // שומרים בזיכרון שהמשתמש הזה אישר את התנאים
-      await AsyncStorage.setItem(`@accepted_tos_${user.id}`, 'true');
-      setIsVisible(false); // סוגרים את המודל ונותנים לו להיכנס לאפליקציה
+      const token = await getToken({ template: 'supabase' });
+      if (token) {
+        // שומרים בשרת (Supabase) שהמשתמש הזה אישר את התנאים
+        await markTosAsAccepted(token, user.id);
+        setIsVisible(false); // סוגרים את המודל ונותנים לו להיכנס לאפליקציה
+      }
     } catch (error) {
       console.error('Error saving TOS:', error);
     }

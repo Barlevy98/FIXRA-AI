@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
 interface TutorialModalProps {
   visible: boolean;
@@ -9,6 +10,12 @@ interface TutorialModalProps {
 }
 
 export default function TutorialModal({ visible, onClose }: TutorialModalProps) {
+  
+  const handleClose = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onClose();
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
@@ -18,7 +25,7 @@ export default function TutorialModal({ visible, onClose }: TutorialModalProps) 
             {/* Header with Skip */}
             <View style={styles.header}>
               <Text style={styles.headerBrand}>FIXRA <Text style={styles.headerAI}>AI</Text></Text>
-              <TouchableOpacity onPress={onClose} style={styles.skipBtn}>
+              <TouchableOpacity onPress={handleClose} style={styles.skipBtn}>
                 <Text style={styles.skipBtnText}>Skip</Text>
               </TouchableOpacity>
             </View>
@@ -40,7 +47,7 @@ export default function TutorialModal({ visible, onClose }: TutorialModalProps) 
                     desc="Take a screenshot or record a quick video where you're stuck."
                   />
 
-                  {/* Step 2 - הצעד החדש של הטקסט */}
+                  {/* Step 2 */}
                   <TutorialStep 
                     icon="chatbubbles-outline" 
                     color="#bf5af2" 
@@ -70,7 +77,7 @@ export default function TutorialModal({ visible, onClose }: TutorialModalProps) 
 
             {/* Action Button */}
             <View style={styles.footer}>
-              <TouchableOpacity style={styles.startBtn} onPress={onClose} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.startBtn} onPress={handleClose} activeOpacity={0.8}>
                 <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.startBtnGradient}>
                   <Text style={styles.startBtnText}>Get Started</Text>
                   <Ionicons name="rocket-outline" size={20} color="#fff" style={{ marginLeft: 10 }} />
@@ -85,8 +92,16 @@ export default function TutorialModal({ visible, onClose }: TutorialModalProps) 
   );
 }
 
-// קומפוננטת עזר פנימית לשלבים
-function TutorialStep({ icon, color, title, desc, isLast = false }: any) {
+// הגדרת טיפוסים נכונה כדי למנוע שגיאות טייפסקריפט
+interface TutorialStepProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  title: string;
+  desc: string;
+  isLast?: boolean;
+}
+
+function TutorialStep({ icon, color, title, desc, isLast = false }: TutorialStepProps) {
   return (
     <View style={styles.stepContainer}>
       <View style={[styles.iconWrapper, { borderColor: color }]}>

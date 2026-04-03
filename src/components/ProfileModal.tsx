@@ -47,7 +47,22 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
     setShowLangMenu(false);
   };
 
-  // פונקציה מעודכנת עם הניסוח המשפטי המדויק
+  // פונקציית "הרמזור": מסדרת את האנימציות בתור כדי למנוע את באג המסך השחור
+  const handleOpenStore = () => {
+    // 1. קודם כל נסגור את תת-החלון (אם הוא פתוח)
+    setShowPlanDetails(false); 
+    
+    // 2. ניתן לריאקט 50 מילישניות לעדכן את המסך, ואז נסגור את הפרופיל הראשי
+    setTimeout(() => {
+      onClose(); 
+      
+      // 3. ניתן לאנימציית הסגירה להסתיים באלגנטיות (500 מילישניות), ורק אז נפתח חנות
+      setTimeout(() => {
+        onOpenPaywall();
+      }, 500); 
+    }, 50);
+  };
+
   const handleCancelSubscription = () => {
     Alert.alert(
       "Cancel Subscription",
@@ -58,7 +73,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
           text: "Yes, Cancel", 
           style: "destructive", 
           onPress: () => {
-            resetToFree(); // בסביבת פרודקשן אמיתית זה רק מסמן ביטול חידוש בחנות
+            resetToFree(); 
             setShowPlanDetails(false);
             Alert.alert("Cancelled", "Your subscription has been cancelled and will not renew next month.");
           }
@@ -69,15 +84,20 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
 
   const getActivePlanFeatures = () => {
     switch(currentPlan) {
-      case 'PRO': 
-        return ['Unlimited mission solves', 'AI help (image + text + video)', 'All guide links included', 'No ads', 'Fastest results ⚡'];
-      case 'Advanced': 
-        return ['50 mission solves per day', 'AI help (image + text input)', '3 guide links per solution', 'Priority access'];
-      case 'Basic': 
-        return ['20 mission solves per day', 'AI help (10 image + text)', '1 guide link per solution'];
+      case 'PREMIUM': 
+        return ['Unlimited mission solves', 'AI help (video + image + text)', 'Unlimited guide links', 'No ads', 'Fastest results ⚡', 'Priority processing'];
+      case 'PRO_monthly':
+      case 'PRO_onetime': 
+        return ['50 mission solves per month', 'AI help (image + text input)', '3 guide links per solution', 'Priority support'];
       default: 
-        return ['Limited daily solves', 'Basic AI help', 'Ads included'];
+        return ['3 free messages per day', 'Basic AI help', 'Ads included'];
     }
+  };
+
+  const getDisplayPlanName = () => {
+    if (currentPlan === 'PREMIUM') return 'PREMIUM Plan';
+    if (currentPlan.startsWith('PRO')) return 'PRO Plan';
+    return 'Free Tier';
   };
 
   return (
@@ -114,7 +134,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
               <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress}</Text>
             </View>
 
-            {/* --- אזור הסטטוס הפרימיום --- */}
+            {/* --- אזור הסטטוס מנוי --- */}
             <View style={styles.cardWrapper}>
               <Text style={styles.sectionTitle}>{t.profileStatus}</Text>
               
@@ -123,7 +143,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                   <View style={[styles.glassCard, styles.glassCardPro]}>
                     <View style={styles.cardHeader}>
                       <Ionicons name="diamond" size={24} color="#00e5ff" />
-                      <Text style={styles.proTitle}>FIXRA PRO</Text>
+                      <Text style={styles.proTitle}>FIXRA PREMIUM</Text>
                     </View>
                     <Text style={styles.statsTextPro}>Active Plan</Text>
                     <Text style={styles.statsSubText}>Unlimited Access</Text>
@@ -136,10 +156,10 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                       <Text style={styles.freeTitle}>CURRENT PLAN</Text>
                     </View>
                     <Text style={styles.statsTextPro}>
-                      {currentPlan === 'Free' ? 'Free Plan' : `${currentPlan} Plan`}
+                      {getDisplayPlanName()}
                     </Text>
                     <Text style={styles.statsText}>
-                      {currentPlan === 'Free' ? 'Limited Features' : 'Enhanced Features'}
+                      {currentPlan === 'Free' ? '3 Free Messages Daily' : 'Enhanced Features'}
                     </Text>
                     <Ionicons name="chevron-forward" size={20} color="#aaaaaa" style={styles.chevronRightAbs} />
                   </View>
@@ -173,9 +193,9 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
               </TouchableOpacity>
             </View>
 
-            {/* כפתור החנות */}
+            {/* כפתור החנות הרגיל */}
             {!isPro && (
-              <TouchableOpacity style={styles.storeButton} onPress={() => { onClose(); onOpenPaywall(); }}>
+              <TouchableOpacity style={styles.storeButton} onPress={handleOpenStore}>
                 <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.storeButtonGradient}>
                   <Ionicons name="cart-outline" size={20} color="#ffffff" style={styles.btnIcon} />
                   <Text style={styles.storeButtonText}>{t.profileStore}</Text>
@@ -267,7 +287,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
 
                 <View style={styles.planDetailsCard}>
                   <Text style={styles.planDetailsTitle}>
-                    {currentPlan === 'Free' ? 'Free Plan' : `FIXRA ${currentPlan}`}
+                    {getDisplayPlanName()}
                   </Text>
                   <View style={styles.planFeaturesList}>
                     {getActivePlanFeatures().map((feature, index) => (
@@ -284,7 +304,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                     <Text style={styles.cancelPlanBtnText}>Cancel Subscription</Text>
                   </TouchableOpacity>
                 ) : (
-                  <TouchableOpacity style={styles.upgradePlanBtn} onPress={() => { setShowPlanDetails(false); onClose(); onOpenPaywall(); }}>
+                  <TouchableOpacity style={styles.upgradePlanBtn} onPress={handleOpenStore}>
                     <Text style={styles.upgradePlanBtnText}>Upgrade Plan</Text>
                   </TouchableOpacity>
                 )}

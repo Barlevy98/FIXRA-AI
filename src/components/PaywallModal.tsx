@@ -23,7 +23,9 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 
   const handleFinalPurchase = (paymentMode: 'one-time' | 'monthly') => {
     if (selectedPlan) {
-      mockPurchaseSuccess(selectedPlan);
+      // שומרים על הלוגיקה החדשה של השרת שלנו
+      const purchaseCode = selectedPlan === 'PRO' ? `PRO_${paymentMode}` : 'PREMIUM';
+      mockPurchaseSuccess(purchaseCode);
     }
     setIsCheckoutVisible(false);
     onClose();
@@ -54,33 +56,14 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 
               <View style={styles.packsContainer}>
                 
-                {/* 1. Basic Pack */}
+                {/* 1. PRO Pack (לשעבר Advanced מהמלל המקורי שלך) */}
                 <PlanCard 
-                  title="Basic Pack" 
-                  monthlyPrice="$4.99" 
-                  oneTimePrice="$8.99"
-                  discountText="Save 44% vs One-Time"
-                  subDesc="Limited Fixes"
-                  btnText="Start Now ⚡"
-                  onPress={() => handlePlanSelect('Basic')}
-                >
-                  <FeatureItem text="20 mission solves / month" />
-                  <FeatureItem text="AI help (10 image + text)" />
-                  <FeatureItem text="1 guide link per solution" />
-                  <FeatureItem text="Ads included" isCross />
-                  <FeatureItem text="Slower results" isCross />
-                </PlanCard>
-
-                {/* 2. Advanced Pack */}
-                <PlanCard 
-                  title="Advanced Pack" 
-                  monthlyPrice="$9.99" 
-                  oneTimePrice="$14.99"
-                  discountText="Save 33% vs One-Time"
+                  title="PRO" 
+                  monthlyPrice="$11.99" 
                   subDesc="Best Value"
                   badgeText="🔥 MOST POPULAR"
-                  btnText="Get Best Value 💎"
-                  onPress={() => handlePlanSelect('Advanced')}
+                  btnText="Get PRO ⚡"
+                  onPress={() => handlePlanSelect('PRO')}
                   isPopular
                 >
                   <FeatureItem text="50 mission solves / month" />
@@ -90,17 +73,16 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                   <FeatureItem text="Ads included" isCross />
                 </PlanCard>
 
-                {/* 3. Fixra PRO */}
+                {/* 2. PREMIUM Pack (לשעבר Fixra PRO מהמלל המקורי שלך) */}
                 <PlanCard 
-                  title="Fixra PRO" 
-                  monthlyPrice="$29.99" 
+                  title="PREMIUM" 
+                  monthlyPrice="$24.99" 
                   subDesc="Unlimited Power"
                   badgeText="👑 ULTIMATE EXPERIENCE"
-                  btnText="Go PRO 🚀"
-                  onPress={() => handlePlanSelect('PRO')}
+                  btnText="Go PREMIUM 👑"
+                  onPress={() => handlePlanSelect('PREMIUM')}
                   isPro={true}
                   isAlreadyPro={isPro}
-                  footerText="Join 10,000 players already using Fixra"
                 >
                   <FeatureItem text="Unlimited mission solves" />
                   <FeatureItem text="AI help (image + text + video)" />
@@ -111,6 +93,8 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                 </PlanCard>
 
               </View>
+
+              <Text style={styles.bottomFooterText}>Join 10,000 players already using Fixra</Text>
 
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -129,14 +113,14 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 }
 
 // ==========================================
-// קומפוננטת ציר הזמן המעוצבת (Timeline)
+// קומפוננטת ציר הזמן (Checkout Modal)
 // ==========================================
 function TimelineStep({ icon, title, desc, isLast = false }: { icon: string, title: string, desc: string, isLast?: boolean }) {
   return (
     <View style={styles.timelineRow}>
       <View style={styles.iconColumn}>
         <View style={styles.iconCircle}>
-          <Ionicons name={icon as any} size={20} color="#6366f1" />
+          <Ionicons name={icon as any} size={18} color="#6366f1" />
         </View>
         {!isLast && <View style={styles.timelineLine} />}
       </View>
@@ -149,13 +133,11 @@ function TimelineStep({ icon, title, desc, isLast = false }: { icon: string, tit
 }
 
 // ==========================================
-// קומפוננטת כרטיסיית חבילה מעוצבת ומודרנית
+// קומפוננטת כרטיסיית החבילה
 // ==========================================
 interface PlanCardProps {
   title: string;
   monthlyPrice: string;
-  oneTimePrice?: string;
-  discountText?: string;
   subDesc: string;
   badgeText?: string;
   btnText: string;
@@ -164,12 +146,9 @@ interface PlanCardProps {
   isPopular?: boolean;
   isPro?: boolean;
   isAlreadyPro?: boolean;
-  footerText?: string;
 }
 
-function PlanCard({ title, monthlyPrice, oneTimePrice, discountText, subDesc, badgeText, btnText, children, onPress, isPopular, isPro: isProCard, isAlreadyPro, footerText }: PlanCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
+function PlanCard({ title, monthlyPrice, subDesc, badgeText, btnText, children, onPress, isPopular, isPro: isProCard, isAlreadyPro }: PlanCardProps) {
   const cardStyles = [
     styles.packInner, 
     isPopular && styles.packInnerPopular,
@@ -182,8 +161,6 @@ function PlanCard({ title, monthlyPrice, oneTimePrice, discountText, subDesc, ba
     isProCard && {color: '#00e5ff'}
   ];
 
-  const childrenArray = React.Children.toArray(children);
-
   return (
     <View style={styles.packWrapper}>
       {badgeText && (
@@ -191,69 +168,47 @@ function PlanCard({ title, monthlyPrice, oneTimePrice, discountText, subDesc, ba
           <Text style={[styles.badgeText, isProCard && styles.badgeTextPro]}>{badgeText}</Text>
         </View>
       )}
-      <LinearGradient colors={['rgba(25, 25, 25, 0.5)', 'rgba(0, 0, 0, 0.8)']} style={cardStyles}>
+      <LinearGradient colors={['rgba(25, 25, 25, 0.4)', 'rgba(0, 0, 0, 0.8)']} style={cardStyles}>
         
-        <TouchableOpacity activeOpacity={0.7} onPress={() => setIsExpanded(!isExpanded)} style={styles.packHeaderClickable}>
-          <View style={styles.titleRow}>
-            <Text style={styles.packTitle}>{title} <Text style={styles.packSubDescHeader}>— {subDesc}</Text></Text>
-            <Ionicons 
-              name={isExpanded ? "chevron-up" : "chevron-down"} 
-              size={22} 
-              color="#aaaaaa" 
-              style={styles.chevronIcon} 
-            />
-          </View>
+        <View style={styles.packHeaderClickable}>
+          <Text style={styles.packTitle}>{title}</Text>
+          <Text style={styles.packSubDescHeader}>{subDesc}</Text>
           
           <View style={styles.priceContainer}>
             <View style={styles.packPriceRow}>
               <Text style={priceTextStyles}>{monthlyPrice}</Text>
               <Text style={styles.packDesc}> / mo</Text>
             </View>
-            
-            {oneTimePrice && (
-              <Text style={styles.oneTimePriceText}>or {oneTimePrice} one-time</Text>
-            )}
+            <Text style={styles.onlyText}>ONLY</Text>
           </View>
-          
-          {discountText && (
-            <View style={styles.discountBadge}>
-              <Text style={styles.discountText}>{discountText}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.featuresListContainer}>
-          {childrenArray.map((child, index) => {
-            if (index < 2 || isExpanded) {
-              return child;
-            }
-            return null;
-          })}
         </View>
 
-        <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={{width: '100%', marginTop: 5}}>
-          <LinearGradient colors={isProCard ? ['#ff00cc', '#3333ff'] : ['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionButton}>
+        {/* פה נמצאת רשימת הפיצ'רים עם המלל המקורי שלך */}
+        <View style={styles.featuresListContainer}>
+          {children}
+        </View>
+        
+        {/* כפתור הרכישה */}
+        <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.btnWrapper}>
+          <LinearGradient colors={isProCard ? ['#007acc', '#00e5ff'] : ['#8a2be2', '#ff00cc']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionButton}>
             <Text style={styles.actionButtonText}>
-              {isProCard && isAlreadyPro ? 'Already PRO ✨' : btnText}
+              {isProCard && isAlreadyPro ? 'Active ✨' : btnText}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
 
-        {footerText && (
-          <Text style={styles.packFooterText}>{footerText}</Text>
-        )}
-        
       </LinearGradient>
     </View>
   );
 }
 
+// קומפוננטת פיצ'ר תומכת ב-X עבור אייטמים חסומים (כמו במקור)
 function FeatureItem({ text, isCross = false }: { text: string, isCross?: boolean }) {
   return (
     <View style={styles.featureRow}>
       <Ionicons 
         name={isCross ? "close" : "checkmark"} 
-        size={20} 
+        size={14} 
         color={isCross ? '#ff4444' : '#00e5ff'} 
         style={styles.featureIcon} 
       />
@@ -268,7 +223,7 @@ function FeatureItem({ text, isCross = false }: { text: string, isCross?: boolea
 }
 
 // ==========================================
-// קומפוננטת האישור והטיימליין (Checkout Modal)
+// קומפוננטת האישור (Checkout Modal) - עם המלל המקורי!
 // ==========================================
 function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boolean, planName: string, onClose: () => void, onConfirm: (mode: 'one-time'|'monthly') => void }) {
   const slideAnim = useRef(new Animated.Value(Dimensions.get('window').height)).current;
@@ -278,7 +233,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
 
   useEffect(() => {
     if (visible) {
-      setPaymentMode(planName === 'PRO' ? 'monthly' : 'monthly');
+      setPaymentMode('monthly');
       setIsRendered(true);
       Animated.spring(slideAnim, {
         toValue: 0,
@@ -303,32 +258,16 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
   let steps = [];
   let checkoutPrice = '';
 
-  if (planName === 'Basic') {
+  if (planName === 'PRO') {
     if (paymentMode === 'one-time') {
-      checkoutPrice = '$8.99';
-      steps = [
-        { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
-        { icon: "battery-half-outline", title: "20 Total Solves", desc: "You get exactly 20 solves. Does not renew." },
-        { icon: "wallet-outline", title: "One-Time Payment", desc: "Pay once, no recurring charges.", isLast: true }
-      ];
-    } else {
-      checkoutPrice = '$4.99';
-      steps = [
-        { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
-        { icon: "time-outline", title: "20 Monthly Solves", desc: "Get 20 mission solves renewed every month." },
-        { icon: "shield-checkmark-outline", title: "Secure Payment", desc: "Safe and secure monthly billing.", isLast: true }
-      ];
-    }
-  } else if (planName === 'Advanced') {
-    if (paymentMode === 'one-time') {
-      checkoutPrice = '$14.99';
+      checkoutPrice = '$24.99';
       steps = [
         { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
         { icon: "battery-half-outline", title: "50 Total Solves", desc: "You get exactly 50 solves. Does not renew." },
         { icon: "wallet-outline", title: "One-Time Payment", desc: "Pay once, no recurring charges.", isLast: true }
       ];
     } else {
-      checkoutPrice = '$9.99';
+      checkoutPrice = '$11.99';
       steps = [
         { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
         { icon: "time-outline", title: "50 Monthly Solves", desc: "Get 50 mission solves renewed every month." },
@@ -336,7 +275,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
       ];
     }
   } else {
-    checkoutPrice = '$29.99';
+    checkoutPrice = '$24.99';
     steps = [
       { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
       { icon: "infinite-outline", title: "Unlimited Power", desc: "Never run out of solves. Truly unlimited." },
@@ -354,20 +293,20 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
 
         <Text style={styles.checkoutTitle}>Checkout: {planName}</Text>
         
-        {planName !== 'PRO' && (
+        {planName === 'PRO' && (
           <View style={styles.toggleContainer}>
             <TouchableOpacity 
               style={[styles.toggleBtn, paymentMode === 'monthly' && styles.toggleBtnActive]} 
               onPress={() => setPaymentMode('monthly')}
             >
-              <Text style={[styles.toggleBtnText, paymentMode === 'monthly' && styles.toggleBtnTextActive]}>Monthly</Text>
+              <Text style={[styles.toggleBtnText, paymentMode === 'monthly' && styles.toggleBtnTextActive]}>Monthly ($11.99)</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={[styles.toggleBtn, paymentMode === 'one-time' && styles.toggleBtnActive]} 
               onPress={() => setPaymentMode('one-time')}
             >
-              <Text style={[styles.toggleBtnText, paymentMode === 'one-time' && styles.toggleBtnTextActive]}>One-Time</Text>
+              <Text style={[styles.toggleBtnText, paymentMode === 'one-time' && styles.toggleBtnTextActive]}>One-Time ($24.99)</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -404,55 +343,43 @@ const styles = StyleSheet.create({
   background: { flex: 1 },
   safeArea: { flex: 1 },
   closeBtn: { position: 'absolute', top: Platform.OS === 'ios' ? 50 : 20, left: 20, zIndex: 10, padding: 10 },
-  scrollContent: { paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 100 : 70, paddingBottom: 30 },
-  headerContainer: { alignItems: 'center', marginBottom: 25 },
-  mainTitle: { color: '#ffffff', fontSize: 36, fontWeight: '900', textAlign: 'center', lineHeight: 40, textShadowColor: 'rgba(255, 255, 255, 0.3)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 10 },
-  mainSubtitle: { color: '#cccccc', fontSize: 16, marginTop: 10, textAlign: 'center' },
+  scrollContent: { paddingHorizontal: 10, paddingTop: Platform.OS === 'ios' ? 100 : 70, paddingBottom: 30 },
+  headerContainer: { alignItems: 'center', marginBottom: 35 },
+  mainTitle: { color: '#ffffff', fontSize: 30, fontWeight: '900', textAlign: 'center', lineHeight: 36 },
+  mainSubtitle: { color: '#cccccc', fontSize: 15, marginTop: 5, textAlign: 'center' },
   
-  timelineWrapper: { width: '100%', marginBottom: 35, paddingHorizontal: 10 },
-  timelineRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 },
-  iconColumn: { alignItems: 'center', width: 40 },
-  iconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1e1e1e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#333' },
-  timelineLine: { width: 2, height: 35, backgroundColor: '#333', marginTop: 5 },
-  textColumn: { flex: 1, marginLeft: 15, justifyContent: 'center' },
-  timelineTitle: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
-  timelineDesc: { color: '#aaaaaa', fontSize: 13, marginTop: 3 },
-
-  packsContainer: { width: '100%' },
-  packWrapper: { marginBottom: 20, position: 'relative' },
-  packInner: { borderRadius: 18, padding: 22, borderWidth: 1, borderColor: '#333', alignItems: 'center' },
-  packInnerPopular: { borderColor: '#ff00cc', borderWidth: 2 },
-  packInnerPro: { borderColor: '#00e5ff', borderWidth: 2 },
+  packsContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
+  packWrapper: { width: '48.5%', position: 'relative' },
+  packInner: { borderRadius: 20, padding: 12, paddingBottom: 15, borderWidth: 1, borderColor: '#333', alignItems: 'center', flex: 1 },
   
-  packHeaderClickable: { width: '100%', alignItems: 'center' },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
-  packTitle: { color: '#ffffff', fontSize: 20, fontWeight: 'bold', textAlign: 'center' },
-  packSubDescHeader: { color: '#aaaaaa', fontWeight: 'normal', fontSize: 14 },
-  chevronIcon: { marginLeft: 8 },
+  packInnerPopular: { borderColor: '#ff00cc', borderWidth: 2, shadowColor: '#ff00cc', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 5 },
+  packInnerPro: { borderColor: '#00e5ff', borderWidth: 2, shadowColor: '#00e5ff', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 5 },
   
-  priceContainer: { alignItems: 'center', marginBottom: 12 },
+  packHeaderClickable: { width: '100%', alignItems: 'center', marginBottom: 15 },
+  packTitle: { color: '#ffffff', fontSize: 20, fontWeight: '900', textAlign: 'center', marginBottom: 2 },
+  packSubDescHeader: { color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginBottom: 10 },
+  
+  priceContainer: { alignItems: 'center', marginBottom: 5 },
   packPriceRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' },
-  packPrice: { color: '#ffffff', fontSize: 34, fontWeight: '900' },
-  packDesc: { color: '#aaaaaa', fontSize: 16, fontWeight: 'bold', marginLeft: 2 },
-  oneTimePriceText: { color: '#888888', fontSize: 14, marginTop: 4, fontStyle: 'italic' },
+  packPrice: { color: '#ffffff', fontSize: 24, fontWeight: '900' },
+  packDesc: { color: '#aaaaaa', fontSize: 13, fontWeight: 'bold', marginLeft: 2 },
+  onlyText: { color: '#aaaaaa', fontSize: 9, fontWeight: 'bold', marginTop: 2, letterSpacing: 1 },
   
-  discountBadge: { backgroundColor: '#ffcc00', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, marginBottom: 15, alignSelf: 'center', shadowColor: '#ffcc00', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 5, elevation: 3 },
-  discountText: { color: '#000000', fontSize: 13, fontWeight: '900', letterSpacing: 0.5 },
+  featuresListContainer: { flex: 1, width: '100%', alignItems: 'flex-start', paddingLeft: 2, marginBottom: 15 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, width: '100%' },
+  featureIcon: { marginRight: 6 },
+  featureText: { color: '#ffffff', fontSize: 11.5, flexShrink: 1 },
 
-  featuresListContainer: { width: '100%', marginBottom: 20, alignItems: 'flex-start', paddingLeft: 10 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  featureIcon: { marginRight: 12 },
-  featureText: { color: '#ffffff', fontSize: 15 },
-
-  badge: { position: 'absolute', top: -12, right: 20, backgroundColor: '#ffcc00', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, zIndex: 5 },
+  badge: { position: 'absolute', top: -12, alignSelf: 'center', backgroundColor: '#ffcc00', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, zIndex: 5 },
   badgePro: { backgroundColor: '#00e5ff' },
-  badgeText: { color: '#000000', fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  badgeText: { color: '#000000', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
   badgeTextPro: { color: '#000000' },
 
-  actionButton: { width: '100%', paddingVertical: 15, borderRadius: 30, alignItems: 'center' },
-  actionButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
+  btnWrapper: { width: '100%', marginTop: 'auto' },
+  actionButton: { width: '100%', paddingVertical: 12, borderRadius: 20, alignItems: 'center' },
+  actionButtonText: { color: '#ffffff', fontSize: 13, fontWeight: 'bold', letterSpacing: 0.5 },
 
-  packFooterText: { color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginTop: 12, fontStyle: 'italic', fontWeight: '500' },
+  bottomFooterText: { color: '#aaaaaa', fontSize: 13, textAlign: 'center', marginTop: 30, fontWeight: '500' },
 
   checkoutOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end', zIndex: 100 },
   checkoutSheet: { backgroundColor: '#0a0026', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, paddingBottom: Platform.OS === 'ios' ? 50 : 30, borderWidth: 1, borderColor: '#333', borderBottomWidth: 0 },
@@ -462,8 +389,17 @@ const styles = StyleSheet.create({
   toggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 15, padding: 5, marginBottom: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   toggleBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10 },
   toggleBtnActive: { backgroundColor: '#6366f1' },
-  toggleBtnText: { color: '#aaaaaa', fontSize: 15, fontWeight: 'bold' },
+  toggleBtnText: { color: '#aaaaaa', fontSize: 14, fontWeight: 'bold' },
   toggleBtnTextActive: { color: '#ffffff' },
+
+  timelineWrapper: { width: '100%', marginBottom: 35, paddingHorizontal: 10 },
+  timelineRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 15 },
+  iconColumn: { alignItems: 'center', width: 30 },
+  iconCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#1e1e1e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#333' },
+  timelineLine: { width: 2, height: 25, backgroundColor: '#333', marginTop: 5 },
+  textColumn: { flex: 1, marginLeft: 15, justifyContent: 'center' },
+  timelineTitle: { color: '#ffffff', fontSize: 15, fontWeight: 'bold' },
+  timelineDesc: { color: '#aaaaaa', fontSize: 12, marginTop: 3 },
 
   checkoutTimelineWrapper: { marginBottom: 25 },
   confirmBtn: { paddingVertical: 18, borderRadius: 30, alignItems: 'center' },

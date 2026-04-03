@@ -5,6 +5,7 @@ import { useUser, useAuth } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as VideoThumbnails from 'expo-video-thumbnails'; 
 import * as FileSystem from 'expo-file-system'; 
+import * as Haptics from 'expo-haptics'; // ייבוא ספריית הרטט החדשה
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient'; 
 import { MessageType, ChatSession } from '../types';
@@ -13,8 +14,9 @@ import { usePaywall } from '../context/PaywallContext';
 import PaywallModal from '../components/PaywallModal';
 import ProfileModal from '../components/ProfileModal';
 import TutorialModal from '../components/TutorialModal';
+import TermsModal from '../components/TermsModal'; 
 import { getTranslation } from '../utils/translations';
-import { saveChatSession, getUserChatSessions, getUserTutorialStatus, markTutorialAsSeen } from '../utils/db';
+import { saveChatSession, getUserChatSessions, getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus } from '../utils/db';
 
 const PREVIEW_HEIGHT = 80;
 const screenWidth = Dimensions.get('window').width;
@@ -56,30 +58,42 @@ export default function ChatScreen() {
   }, {} as Record<string, ChatSession[]>);
 
   const toggleFolder = (category: string) => {
+    Haptics.selectionAsync(); // פידבק בלחיצה על תיקיה
     setExpandedFolders(prev => 
       prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]
     );
   };
 
   useEffect(() => {
-    const checkTutorial = async () => {
+    let intervalId: NodeJS.Timeout;
+
+    const checkFlow = async () => {
       if (user?.id && !hasCheckedTutorial) {
         try {
           const token = await getToken({ template: 'supabase' });
           if (token) {
-            const hasSeen = await getUserTutorialStatus(token, user.id);
-            if (!hasSeen) {
-              setIsTutorialVisible(true);
+            const hasAcceptedTos = await getUserTosStatus(token, user.id);
+            if (hasAcceptedTos) {
+              const hasSeenTut = await getUserTutorialStatus(token, user.id);
+              if (!hasSeenTut) {
+                setIsTutorialVisible(true);
+              }
+              setHasCheckedTutorial(true);
+              if (intervalId) clearInterval(intervalId);
             }
           }
         } catch (e) {
-          console.error('Error checking tutorial status', e);
-        } finally {
-          setHasCheckedTutorial(true);
+          console.error('Error checking flow status', e);
         }
       }
     };
-    checkTutorial();
+
+    checkFlow();
+    intervalId = setInterval(checkFlow, 1500);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [user, hasCheckedTutorial]);
 
   const handleCloseTutorial = async () => {
@@ -173,6 +187,7 @@ export default function ChatScreen() {
   };
 
   const createNewSession = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newId = Date.now().toString();
     const initialMessage: MessageType = { id: '1', text: greetingText, sender: 'bot' };
     
@@ -189,6 +204,7 @@ export default function ChatScreen() {
   };
 
   const switchSession = (sessionId: string) => {
+    Haptics.selectionAsync();
     const session = sessions.find(s => s.id === sessionId);
     if (session) {
       setCurrentSessionId(session.id);
@@ -198,9 +214,11 @@ export default function ChatScreen() {
   };
 
   const deleteSession = (sessionId: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(t.deleteAlert, t.deleteConfirm, [
       { text: t.cancel, style: 'cancel' },
       { text: t.delete, style: 'destructive', onPress: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           const updatedSessions = sessions.filter(s => s.id !== sessionId);
           saveSessionsToStorage(updatedSessions);
           if (currentSessionId === sessionId) {
@@ -257,6 +275,7 @@ export default function ChatScreen() {
   };
 
   const toggleMenu = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isMenuOpen) {
       Animated.timing(slideAnim, { toValue: screenWidth, duration: 300, useNativeDriver: true }).start(() => setIsMenuOpen(false));
     } else {
@@ -340,7 +359,14 @@ export default function ChatScreen() {
 
   const sendMessage = async () => {
     if (inputText.trim() === '' && !selectedMedia) return;
-    if (hasReachedLimit) { setIsPaywallVisible(true); return; }
+    
+    if (hasReachedLimit) { 
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setIsPaywallVisible(true); 
+      return; 
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // רטט כיפי בלחיצה על "שלח"
 
     const userText = inputText.trim();
     const currentMedia = selectedMedia;
@@ -358,20 +384,28 @@ export default function ChatScreen() {
     setInputText('');
     setSelectedMedia(null);
     setIsAttachMenuVisible(false);
-    incrementMessageCount();
 
     const loadingId = (Date.now() + 1).toString();
     updatedMsgs = [...updatedMsgs, { id: loadingId, sender: 'bot', isLoading: true }];
     updateCurrentSession(updatedMsgs);
 
+    // מחכים לתשובה מה-AI לפני שיורד הקרדיט!
     const response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, messages, currentPlan);
     
     updatedMsgs = updatedMsgs.map(msg => msg.id === loadingId ? { id: loadingId, text: response.message, walkthroughData: response.walkthroughData, sender: 'bot' } : msg);
-    
     updateCurrentSession(updatedMsgs, response.category);
+
+    // רק אם התשובה חזרה בהצלחה בלי שגיאה - נספור את ההודעה
+    if (!response.isError) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // הכל הצליח - רטט טוב
+      incrementMessageCount();
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); // שגיאה מהשרת
+    }
   };
 
   const handleRating = (messageId: string, rating: 'up' | 'down') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const updatedMsgs = messages.map(msg => 
       msg.id === messageId ? { ...msg, rating: msg.rating === rating ? undefined : rating } : msg
     );
@@ -544,7 +578,7 @@ export default function ChatScreen() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             {user?.imageUrl && (
-              <TouchableOpacity onPress={() => setIsProfileVisible(true)} style={styles.avatarWrapper}>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsProfileVisible(true); }} style={styles.avatarWrapper}>
                 <Image source={{ uri: user.imageUrl }} style={styles.avatar} />
               </TouchableOpacity>
             )}
@@ -603,7 +637,7 @@ export default function ChatScreen() {
             {hasReachedLimit ? (
               <View style={styles.paywallBlockedField}>
                 <Text style={styles.paywallText}>{t.limitReached}</Text>
-                <TouchableOpacity activeOpacity={0.8} style={{width: '100%'}} onPress={() => setIsPaywallVisible(true)}>
+                <TouchableOpacity activeOpacity={0.8} style={{width: '100%'}} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setIsPaywallVisible(true); }}>
                   <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.paywallButton}>
                     <Text style={styles.paywallButtonText}>{t.upgradeNow}</Text>
                   </LinearGradient>
@@ -627,7 +661,7 @@ export default function ChatScreen() {
                 )}
 
                 <View style={styles.inputUnifiedField}>
-                  <TouchableOpacity onPress={() => setIsAttachMenuVisible(!isAttachMenuVisible)} style={styles.attachButton}>
+                  <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsAttachMenuVisible(!isAttachMenuVisible); }} style={styles.attachButton}>
                     <Text style={styles.attachButtonText}>+</Text>
                   </TouchableOpacity>
                   <View style={styles.inputContentContainer}>
@@ -639,7 +673,7 @@ export default function ChatScreen() {
                             <Ionicons name="play-circle" size={28} color="rgba(255,255,255,0.9)" />
                           </View>
                         )}
-                        <TouchableOpacity style={styles.removeMediaBtn} onPress={() => setSelectedMedia(null)}>
+                        <TouchableOpacity style={styles.removeMediaBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMedia(null); }}>
                           <Ionicons name="close" size={16} color="white" />
                         </TouchableOpacity>
                       </View>
@@ -669,6 +703,7 @@ export default function ChatScreen() {
         <PaywallModal visible={isPaywallVisible} onClose={() => setIsPaywallVisible(false)} />
         <ProfileModal visible={isProfileVisible} onClose={() => setIsProfileVisible(false)} onOpenPaywall={() => setIsPaywallVisible(true)} />
         <TutorialModal visible={isTutorialVisible} onClose={handleCloseTutorial} />
+        <TermsModal />
         
       </SafeAreaView>
     </LinearGradient>

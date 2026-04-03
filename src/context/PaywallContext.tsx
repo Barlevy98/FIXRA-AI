@@ -1,19 +1,21 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser, useAuth } from '@clerk/clerk-expo';
-import { getUserSubscriptionData, updateSubscriptionData } from '../utils/db'; // הייבוא החדש שלנו
+import { getUserSubscriptionData, updateSubscriptionData } from '../utils/db';
 
-const INITIAL_FREE_LIMIT = 3;
+const DAILY_FREE_LIMIT = 3;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 type PaywallContextType = {
+  dailyCount: number;
   messageCount: number;
   maxMessages: number;
   incrementMessageCount: () => Promise<void>;
   hasReachedLimit: boolean;
   isPro: boolean;
   currentPlan: string; 
-  purchasePackage: (plan: '20' | '50' | 'unlimited') => Promise<void>;
+  purchasePackage: (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => Promise<void>;
   chatLanguage: string;
   changeLanguage: (lang: string) => Promise<void>;
   mockPurchaseSuccess: (plan: string) => Promise<void>;
@@ -24,16 +26,16 @@ const PaywallContext = createContext<PaywallContextType | undefined>(undefined);
 
 export const PaywallProvider = ({ children }: { children: React.ReactNode }) => {
   const { user } = useUser();
-  const { getToken } = useAuth(); // הבאנו את הטוקן של Clerk
+  const { getToken } = useAuth(); 
   
+  const [dailyCount, setDailyCount] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
-  const [maxMessages, setMaxMessages] = useState(INITIAL_FREE_LIMIT);
+  const [maxMessages, setMaxMessages] = useState(0);
   const [isPro, setIsPro] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<string>('Free'); 
   const [chatLanguage, setChatLanguage] = useState('English'); 
 
   useEffect(() => {
-    // שפה עדיין שומרים מקומית כי זה תלוי במכשיר
     AsyncStorage.getItem('@app_language').then(savedLang => {
       if (savedLang) setChatLanguage(savedLang);
     });
@@ -55,33 +57,60 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       if (data) {
         let currentCount = data.message_count || 0;
         let lastReset = data.last_reset || now;
+        let currentDailyCount = data.daily_message_count || 0;
+        let lastDailyReset = data.last_daily_reset || now;
+        let plan = data.current_plan || 'Free';
+        
+        let maxMsg = plan === 'Free' ? 0 : (data.max_messages || 0);
 
-        // אם עברו 30 יום מהאיפוס האחרון - נאפס גם בסטייט וגם בשרת
-        if (now - lastReset >= THIRTY_DAYS_MS) {
+        let updates: any = {};
+        let needsUpdate = false;
+
+        // בודק אם זו חבילה חודשית שדורשת איפוס של 30 יום
+        const isMonthlyPlan = plan === 'PREMIUM' || plan === 'PRO_monthly';
+
+        // איפוס חודשי לחבילות מינוי (מתעלם מחד-פעמי)
+        if (now - lastReset >= THIRTY_DAYS_MS && isMonthlyPlan) {
           currentCount = 0;
           lastReset = now;
-          await updateSubscriptionData(token, user.id, {
-            message_count: 0,
-            last_reset: now
-          });
+          updates.message_count = 0;
+          updates.last_reset = now;
+          needsUpdate = true;
         }
 
+        // איפוס יומי ל-3 הודעות החינמיות
+        if (now - lastDailyReset >= ONE_DAY_MS) {
+          currentDailyCount = 0;
+          lastDailyReset = now;
+          updates.daily_message_count = 0;
+          updates.last_daily_reset = now;
+          needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+          await updateSubscriptionData(token, user.id, updates);
+        }
+
+        setDailyCount(currentDailyCount);
         setMessageCount(currentCount);
-        setMaxMessages(data.max_messages ?? INITIAL_FREE_LIMIT);
+        setMaxMessages(maxMsg);
         setIsPro(data.is_pro || false);
-        setCurrentPlan(data.current_plan || 'Free');
+        setCurrentPlan(plan);
 
       } else {
-        // אם המשתמש פותח את האפליקציה פעם ראשונה ואין לו שורה בטבלה
+        // משתמש חדש לגמרי
         await updateSubscriptionData(token, user.id, {
+          daily_message_count: 0,
+          last_daily_reset: now,
           message_count: 0,
-          max_messages: INITIAL_FREE_LIMIT,
+          max_messages: 0,
           current_plan: 'Free',
           is_pro: false,
           last_reset: now
         });
+        setDailyCount(0);
         setMessageCount(0);
-        setMaxMessages(INITIAL_FREE_LIMIT);
+        setMaxMessages(0);
         setIsPro(false);
         setCurrentPlan('Free');
       }
@@ -99,28 +128,45 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
 
       const data = await getUserSubscriptionData(token, user.id);
       const now = Date.now();
+      
+      let currentCount = data?.message_count || 0;
       let lastReset = data?.last_reset || now;
-      let newCount = (data?.message_count || 0);
+      let currentDailyCount = data?.daily_message_count || 0;
+      let lastDailyReset = data?.last_daily_reset || now;
 
-      // מוודאים שוב שעברו 30 יום לפני שמעלים
-      if (now - lastReset >= THIRTY_DAYS_MS) {
-        newCount = 1;
+      let updates: any = {};
+      const isMonthlyPlan = currentPlan === 'PREMIUM' || currentPlan === 'PRO_monthly';
+
+      // מוודאים איפוסים במקרה שהמשתמש פתח לשלוח הודעה אחרי שעבר זמן
+      if (now - lastDailyReset >= ONE_DAY_MS) {
+        currentDailyCount = 0;
+        lastDailyReset = now;
+      }
+      if (now - lastReset >= THIRTY_DAYS_MS && isMonthlyPlan) {
+        currentCount = 0;
         lastReset = now;
-      } else {
-        newCount += 1;
       }
 
-      setMessageCount(newCount);
-      // מעדכנים בענן
-      await updateSubscriptionData(token, user.id, {
-        message_count: newCount,
-        last_reset: lastReset
-      });
+      // קודם לוקחים מהיומי, אם נגמר - לוקחים מהחודשי/חד-פעמי
+      if (currentDailyCount < DAILY_FREE_LIMIT) {
+        currentDailyCount += 1;
+        updates.daily_message_count = currentDailyCount;
+        updates.last_daily_reset = lastDailyReset;
+      } else {
+        currentCount += 1;
+        updates.message_count = currentCount;
+        updates.last_reset = lastReset;
+      }
+
+      setDailyCount(currentDailyCount);
+      setMessageCount(currentCount);
+
+      await updateSubscriptionData(token, user.id, updates);
     } catch (e) { console.error('Error saving message count to DB:', e); }
   };
 
   // רכישת חבילה ועדכון השרת
-  const purchasePackage = async (plan: '20' | '50' | 'unlimited') => {
+  const purchasePackage = async (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => {
     if (!user?.id) return;
     try {
       const token = await getToken({ template: 'supabase' });
@@ -129,22 +175,43 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       const now = Date.now();
       let updates: any = {};
 
-      if (plan === 'unlimited') {
-        setIsPro(true);
-        updates = { is_pro: true };
-      } else {
-        const newMax = plan === '20' ? 20 : 50;
-        setMaxMessages(newMax);
+      if (plan === 'PREMIUM') {
+        setMaxMessages(1000); // תקרת הזכוכית הסודית שלנו
         setMessageCount(0);
-        
-        updates = {
-          max_messages: newMax,
+        setIsPro(true);
+        updates = { 
+          is_pro: true, 
+          current_plan: 'PREMIUM',
+          max_messages: 1000,
           message_count: 0,
           last_reset: now
+        };
+      } else if (plan === 'PRO_monthly') {
+        setMaxMessages(50);
+        setMessageCount(0);
+        setIsPro(false); // הם לא פרימיום, הם פרו
+        updates = {
+          max_messages: 50,
+          message_count: 0,
+          last_reset: now,
+          current_plan: 'PRO_monthly',
+          is_pro: false
+        };
+      } else if (plan === 'PRO_onetime') {
+        setMaxMessages(50);
+        setMessageCount(0);
+        setIsPro(false);
+        updates = {
+          max_messages: 50,
+          message_count: 0,
+          last_reset: now,
+          current_plan: 'PRO_onetime',
+          is_pro: false
         };
       }
 
       await updateSubscriptionData(token, user.id, updates);
+      await loadUserData(); // רענון הסטייט מיד אחרי הקנייה
     } catch (e) { console.error('Error purchasing package:', e); }
   };
 
@@ -155,7 +222,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     } catch (e) { console.error('Error saving language:', e); }
   };
 
-  // פונקציית דמה לרכישות שמדמה רכישה דרך השרת
   const mockPurchaseSuccess = async (plan: string) => {
     alert(`Dev Mode: Unlocking ${plan}...`);
     setCurrentPlan(plan);
@@ -167,22 +233,24 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
        }
     }
 
-    if (plan === 'PRO') {
-      await purchasePackage('unlimited');
-    } else if (plan === 'Basic') {
-      await purchasePackage('20');
-    } else if (plan === 'Advanced') {
-      await purchasePackage('50');
+    if (plan === 'PREMIUM') {
+      await purchasePackage('PREMIUM');
+    } else if (plan === 'PRO_monthly') {
+      await purchasePackage('PRO_monthly');
+    } else if (plan === 'PRO_onetime') {
+      await purchasePackage('PRO_onetime');
     }
   };
 
-  // איפוס לחינמי שמסנכרן בחזרה לשרת
+  // איפוס לחינמי לבדיקות נוחות
   const resetToFree = async () => {
     alert('Dev Mode: Resetting to Free Account...');
+    const now = Date.now();
     setIsPro(false);
     setCurrentPlan('Free');
-    setMaxMessages(INITIAL_FREE_LIMIT);
+    setMaxMessages(0);
     setMessageCount(0);
+    setDailyCount(0);
     
     if (user?.id) {
        const token = await getToken({ template: 'supabase' });
@@ -190,18 +258,22 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
           await updateSubscriptionData(token, user.id, {
               current_plan: 'Free',
               is_pro: false,
-              max_messages: INITIAL_FREE_LIMIT,
-              message_count: 0
+              max_messages: 0,
+              message_count: 0,
+              daily_message_count: 0,
+              last_daily_reset: now
           });
        }
     }
   };
 
+  // בדיקת חסימה חכמה: חוסם את כולם אם הגיעו למקסימום שלהם (גם את הפרימיום, רק שהמקסימום שלהם הוא 1,000)
+  const hasReachedLimit = (dailyCount >= DAILY_FREE_LIMIT) && (messageCount >= maxMessages);
+
   return (
     <PaywallContext.Provider value={{ 
-      messageCount, maxMessages, incrementMessageCount, 
-      hasReachedLimit: !isPro && messageCount >= maxMessages, 
-      isPro, currentPlan, purchasePackage,
+      dailyCount, messageCount, maxMessages, incrementMessageCount, 
+      hasReachedLimit, isPro, currentPlan, purchasePackage,
       chatLanguage, changeLanguage,
       mockPurchaseSuccess, resetToFree 
     }}>

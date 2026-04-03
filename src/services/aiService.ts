@@ -9,11 +9,11 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 export async function fetchGameWalkthrough(
   userText: string,
-  media: { uri: string; type: 'image' | 'video'; base64?: string | string[] } | null, // שדרגנו את הטייפ לקבל מערך של base64
+  media: { uri: string; type: 'image' | 'video'; base64?: string | string[] } | null,
   language: string = 'English',
   previousMessages: MessageType[] = [],
-  userPlan: string = 'Basic'
-): Promise<{ message: string; walkthroughData?: any; category: string }> {
+  userPlan: string = 'Free'
+): Promise<{ message: string; walkthroughData?: any; category: string; isError?: boolean }> {
   try {
     const model = genAI.getGenerativeModel({ 
       model: 'gemini-2.5-flash',
@@ -53,10 +53,8 @@ JSON RESPONSE FORMAT (STRICT):
 
     const promptParts: any[] = [];
     
-    // לוגיקה מעודכנת לטיפול במדיה (תמונה בודדת או רצף תמונות של וידאו)
     if (media && media.base64) {
       if (media.type === 'image' && typeof media.base64 === 'string') {
-        // טיפול בתמונה בודדת
         promptParts.push({
           inlineData: {
             data: media.base64,
@@ -65,7 +63,6 @@ JSON RESPONSE FORMAT (STRICT):
         });
         promptParts.push("Analyze this game screenshot carefully.");
       } else if (media.type === 'video' && Array.isArray(media.base64)) {
-        // טיפול ברצף תמונות של וידאו (מערך)
         media.base64.forEach((base64Image, index) => {
           promptParts.push({
             inlineData: {
@@ -87,7 +84,6 @@ JSON RESPONSE FORMAT (STRICT):
     const result = await chat.sendMessage(promptParts);
     const responseText = result.response.text();
     
-    // ... (שאר הקוד של ה-API של יוטיוב והקישורים נשאר אותו דבר) ...
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error("Invalid AI response format");
@@ -115,8 +111,6 @@ JSON RESPONSE FORMAT (STRICT):
         }
       } catch(e) { console.error("YouTube Fetch Error:", e); }
     }
-
-    // --- הוספת פרמטר &udm=14 לכל החיפושים בגוגל כדי לקבל טקסט נקי ---
 
     // --- 2. Fandom Wiki ---
     if (aiResponseJSON.wikiQuery) {
@@ -178,10 +172,15 @@ JSON RESPONSE FORMAT (STRICT):
       });
     }
 
-    // --- חיתוך הקישורים לפי סוג החבילה ---
-    let allowedLinksCount = 2; // Default for Basic/Free
-    if (userPlan === 'Advanced') allowedLinksCount = 3;
-    if (userPlan === 'PRO') allowedLinksCount = 10; // All links
+    // --- חיתוך הקישורים לפי החבילות החדשות ---
+    let allowedLinksCount = 0;
+    if (userPlan === 'PREMIUM') {
+      allowedLinksCount = 10; // הכל חופשי
+    } else if (userPlan.startsWith('PRO')) {
+      allowedLinksCount = 3; // מנויי פרו מקבלים 3 קישורים
+    } else {
+      allowedLinksCount = 1; // משתמשים חינמיים בטייר היומי מקבלים רק קישור אחד
+    }
 
     const finalLinks = allAvailableLinks.slice(0, allowedLinksCount);
 
@@ -193,14 +192,16 @@ JSON RESPONSE FORMAT (STRICT):
     return {
       message: aiResponseJSON.message,
       walkthroughData: Object.keys(walkthroughData).length > 0 ? walkthroughData : undefined,
-      category: aiResponseJSON.category || 'General'
+      category: aiResponseJSON.category || 'General',
+      isError: false
     };
 
   } catch (error) {
     console.error('AI Service Error:', error);
     return {
-      message: getTranslation(language).aiError, 
-      category: 'General'
+      message: getTranslation(language).aiError || "An error occurred. Don't worry, your credit was not used. Please try again.", 
+      category: 'General',
+      isError: true // הדגל שמונע חיוב שווא!
     };
   }
 }
