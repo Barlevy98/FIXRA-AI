@@ -16,7 +16,7 @@ export async function fetchGameWalkthrough(
 ): Promise<{ message: string; walkthroughData?: any; category: string; isError?: boolean }> {
   try {
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       systemInstruction: `You are an ELITE gaming AI assistant and video analysis expert.
 Language to respond in: ${language}.
 
