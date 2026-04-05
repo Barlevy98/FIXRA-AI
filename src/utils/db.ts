@@ -155,3 +155,54 @@ export const updateSubscriptionData = async (clerkToken: string, userId: string,
   }
   return true;
 };
+// ==========================================
+// פונקציות תוכנית שותפים ומשפיענים (Affiliates)
+// ==========================================
+
+// משיכת נתוני השותף של המשתמש (קוד, מאזן וכו')
+export const getUserAffiliateData = async (clerkToken: string, userId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('referral_code, referred_by, earnings_balance')
+    .eq('user_id', userId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Error fetching affiliate data:', error.message);
+    return null;
+  }
+  return data;
+};
+
+// יצירת קוד הפניה ייחודי למשתמש
+export const createReferralCode = async (clerkToken: string, userId: string, customCode: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  
+  // קודם נוודא שהקוד הזה לא תפוס כבר על ידי מישהו אחר
+  const { data: existing } = await supabase
+    .from('user_profiles')
+    .select('user_id')
+    .eq('referral_code', customCode)
+    .single();
+    
+  if (existing && existing.user_id !== userId) {
+    return { success: false, error: 'Code already taken' };
+  }
+
+  // אם פנוי, נעדכן את הפרופיל של המשתמש
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({ 
+      user_id: userId, 
+      referral_code: customCode,
+      updated_at: Date.now()
+    });
+
+  if (error) {
+    console.error('Error saving referral code:', error.message);
+    return { success: false, error: error.message };
+  }
+  
+  return { success: true };
+};

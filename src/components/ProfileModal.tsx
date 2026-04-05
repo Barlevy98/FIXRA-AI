@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Image, Platform, ScrollView, Alert } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, Image, Platform, ScrollView, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; // <--- התיקון כאן
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePaywall } from '../context/PaywallContext';
 import { getTranslation } from '../utils/translations'; 
+import AffiliateModal from './AffiliateModal'; 
 
 interface ProfileModalProps {
   visible: boolean;
@@ -21,6 +23,7 @@ const LANGUAGES = [
 
 export default function ProfileModal({ visible, onClose, onOpenPaywall }: ProfileModalProps) {
   const { user } = useUser();
+  const insets = useSafeAreaInsets(); // <--- הוספנו את המדידה של המסך
   const { signOut } = useAuth();
   
   const { isPro, currentPlan, chatLanguage, changeLanguage, resetToFree } = usePaywall();
@@ -28,6 +31,10 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPlanDetails, setShowPlanDetails] = useState(false);
+  
+  // סטייטים עבור תוכנית השותפים
+  const [showAffiliateModal, setShowAffiliateModal] = useState(false);
+  const [affiliateMode, setAffiliateMode] = useState<'invite' | 'creator'>('invite');
 
   const t = getTranslation(chatLanguage);
   
@@ -47,16 +54,12 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
     setShowLangMenu(false);
   };
 
-  // פונקציית "הרמזור": מסדרת את האנימציות בתור כדי למנוע את באג המסך השחור
   const handleOpenStore = () => {
-    // 1. קודם כל נסגור את תת-החלון (אם הוא פתוח)
     setShowPlanDetails(false); 
     
-    // 2. ניתן לריאקט 50 מילישניות לעדכן את המסך, ואז נסגור את הפרופיל הראשי
     setTimeout(() => {
       onClose(); 
       
-      // 3. ניתן לאנימציית הסגירה להסתיים באלגנטיות (500 מילישניות), ורק אז נפתח חנות
       setTimeout(() => {
         onOpenPaywall();
       }, 500); 
@@ -103,7 +106,8 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   return (
     <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
       <LinearGradient colors={['#050012', '#0a0026', '#000000']} style={styles.background}>
-        <SafeAreaView style={styles.container}>
+        {/* התיקון כאן: החלפנו את ה-SafeAreaView ב-View רגיל שדוחף את התוכן למטה */}
+        <View style={[styles.container, { paddingTop: Math.max(insets.top, 20) }]}>
           <View style={styles.content}>
             
             {/* Header / כפתור חזרה */}
@@ -134,83 +138,111 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
               <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress}</Text>
             </View>
 
-            {/* --- אזור הסטטוס מנוי --- */}
-            <View style={styles.cardWrapper}>
-              <Text style={styles.sectionTitle}>{t.profileStatus}</Text>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
               
-              <TouchableOpacity activeOpacity={0.8} onPress={() => setShowPlanDetails(true)}>
-                {isPro ? (
-                  <View style={[styles.glassCard, styles.glassCardPro]}>
-                    <View style={styles.cardHeader}>
-                      <Ionicons name="diamond" size={24} color="#00e5ff" />
-                      <Text style={styles.proTitle}>FIXRA PREMIUM</Text>
+              {/* --- אזור הסטטוס מנוי --- */}
+              <View style={styles.cardWrapper}>
+                <Text style={styles.sectionTitle}>{t.profileStatus}</Text>
+                
+                <TouchableOpacity activeOpacity={0.8} onPress={() => setShowPlanDetails(true)}>
+                  {isPro ? (
+                    <View style={[styles.glassCard, styles.glassCardPro]}>
+                      <View style={styles.cardHeader}>
+                        <Ionicons name="diamond" size={24} color="#00e5ff" />
+                        <Text style={styles.proTitle}>FIXRA PREMIUM</Text>
+                      </View>
+                      <Text style={styles.statsTextPro}>Active Plan</Text>
+                      <Text style={styles.statsSubText}>Unlimited Access</Text>
+                      <Ionicons name="chevron-forward" size={20} color="#00e5ff" style={styles.chevronRightAbs} />
                     </View>
-                    <Text style={styles.statsTextPro}>Active Plan</Text>
-                    <Text style={styles.statsSubText}>Unlimited Access</Text>
-                    <Ionicons name="chevron-forward" size={20} color="#00e5ff" style={styles.chevronRightAbs} />
-                  </View>
-                ) : (
-                  <View style={styles.glassCard}>
-                    <View style={styles.cardHeader}>
-                      <Ionicons name="cube-outline" size={24} color="#aaaaaa" />
-                      <Text style={styles.freeTitle}>CURRENT PLAN</Text>
+                  ) : (
+                    <View style={styles.glassCard}>
+                      <View style={styles.cardHeader}>
+                        <Ionicons name="cube-outline" size={24} color="#aaaaaa" />
+                        <Text style={styles.freeTitle}>CURRENT PLAN</Text>
+                      </View>
+                      <Text style={styles.statsTextPro}>
+                        {getDisplayPlanName()}
+                      </Text>
+                      <Text style={styles.statsText}>
+                        {currentPlan === 'Free' ? '3 Free Messages Daily' : 'Enhanced Features'}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={20} color="#aaaaaa" style={styles.chevronRightAbs} />
                     </View>
-                    <Text style={styles.statsTextPro}>
-                      {getDisplayPlanName()}
-                    </Text>
-                    <Text style={styles.statsText}>
-                      {currentPlan === 'Free' ? '3 Free Messages Daily' : 'Enhanced Features'}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={20} color="#aaaaaa" style={styles.chevronRightAbs} />
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* --- אזור תוכנית שותפים (Earn with Fixra) --- */}
+              <View style={styles.cardWrapper}>
+                <Text style={styles.sectionTitle}>Earn with Fixra</Text>
+                
+                <TouchableOpacity style={styles.settingRow} onPress={() => { setAffiliateMode('invite'); setShowAffiliateModal(true); }}>
+                  <View style={styles.settingRowLeft}>
+                    <Ionicons name="gift-outline" size={22} color="#00e5ff" style={{ marginRight: 10 }} />
+                    <Text style={styles.settingRowText}>Invite Friends</Text>
                   </View>
-                )}
+                  <View style={styles.settingRowRight}>
+                    <View style={styles.badgeNew}><Text style={styles.badgeNewText}>GET PRO</Text></View>
+                    <Ionicons name="chevron-forward" size={20} color="#555" />
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.settingRow, {marginTop: 10}]} onPress={() => { setAffiliateMode('creator'); setShowAffiliateModal(true); }}>
+                  <View style={styles.settingRowLeft}>
+                    <Ionicons name="star-outline" size={22} color="#ff00cc" style={{ marginRight: 10 }} />
+                    <Text style={styles.settingRowText}>Creator Program</Text>
+                  </View>
+                  <View style={styles.settingRowRight}>
+                    <View style={styles.badgeEarn}><Text style={styles.badgeEarnText}>EARN $$$</Text></View>
+                    <Ionicons name="chevron-forward" size={20} color="#555" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* --- אזור ההגדרות (שפה + תנאי שימוש) --- */}
+              <View style={styles.cardWrapper}>
+                <Text style={styles.sectionTitle}>{t.profileSettings}</Text>
+                
+                <TouchableOpacity style={styles.settingRow} onPress={() => setShowLangMenu(true)}>
+                  <View style={styles.settingRowLeft}>
+                    <Ionicons name="globe-outline" size={22} color="#aaaaaa" style={{ marginRight: 10 }} />
+                    <Text style={styles.settingRowText}>{t.profileLang}</Text>
+                  </View>
+                  <View style={styles.settingRowRight}>
+                    <Text style={styles.currentLangText}>{currentLangObj.icon} {currentLangObj.label}</Text>
+                    <Ionicons name="chevron-forward" size={20} color="#555" />
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.settingRow, {marginTop: 10}]} onPress={() => setShowTermsModal(true)}>
+                  <View style={styles.settingRowLeft}>
+                    <Ionicons name="document-text-outline" size={22} color="#aaaaaa" style={{ marginRight: 10 }} />
+                    <Text style={styles.settingRowText}>Terms & Privacy</Text>
+                  </View>
+                  <View style={styles.settingRowRight}>
+                    <Ionicons name="chevron-forward" size={20} color="#555" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* כפתור החנות הרגיל */}
+              {!isPro && (
+                <TouchableOpacity style={styles.storeButton} onPress={handleOpenStore}>
+                  <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.storeButtonGradient}>
+                    <Ionicons name="cart-outline" size={20} color="#ffffff" style={styles.btnIcon} />
+                    <Text style={styles.storeButtonText}>{t.profileStore}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+
+              {/* כפתור יציאה */}
+              <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
+                <Ionicons name="log-out-outline" size={20} color="#ff4444" style={styles.btnIcon} />
+                <Text style={styles.logoutButtonText}>{t.profileLogout}</Text>
               </TouchableOpacity>
-            </View>
 
-            {/* --- אזור ההגדרות (שפה + תנאי שימוש) --- */}
-            <View style={styles.cardWrapper}>
-              <Text style={styles.sectionTitle}>{t.profileSettings}</Text>
-              
-              <TouchableOpacity style={styles.settingRow} onPress={() => setShowLangMenu(true)}>
-                <View style={styles.settingRowLeft}>
-                  <Ionicons name="globe-outline" size={22} color="#aaaaaa" style={{ marginRight: 10 }} />
-                  <Text style={styles.settingRowText}>{t.profileLang}</Text>
-                </View>
-                <View style={styles.settingRowRight}>
-                  <Text style={styles.currentLangText}>{currentLangObj.icon} {currentLangObj.label}</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#555" />
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={[styles.settingRow, {marginTop: 10}]} onPress={() => setShowTermsModal(true)}>
-                <View style={styles.settingRowLeft}>
-                  <Ionicons name="document-text-outline" size={22} color="#aaaaaa" style={{ marginRight: 10 }} />
-                  <Text style={styles.settingRowText}>Terms & Privacy</Text>
-                </View>
-                <View style={styles.settingRowRight}>
-                  <Ionicons name="chevron-forward" size={20} color="#555" />
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {/* כפתור החנות הרגיל */}
-            {!isPro && (
-              <TouchableOpacity style={styles.storeButton} onPress={handleOpenStore}>
-                <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.storeButtonGradient}>
-                  <Ionicons name="cart-outline" size={20} color="#ffffff" style={styles.btnIcon} />
-                  <Text style={styles.storeButtonText}>{t.profileStore}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-
-            <View style={styles.spacer} />
-
-            {/* כפתור יציאה */}
-            <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
-              <Ionicons name="log-out-outline" size={20} color="#ff4444" style={styles.btnIcon} />
-              <Text style={styles.logoutButtonText}>{t.profileLogout}</Text>
-            </TouchableOpacity>
-
+            </ScrollView>
           </View>
 
           {/* --- חלונות קופצים (Modals) --- */}
@@ -313,7 +345,14 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
             </View>
           </Modal>
 
-        </SafeAreaView>
+          {/* 4. מודל תוכנית השותפים האמיתי שמחובר לדאטה בייס */}
+          <AffiliateModal 
+            visible={showAffiliateModal} 
+            onClose={() => setShowAffiliateModal(false)} 
+            mode={affiliateMode} 
+          />
+
+        </View>
       </LinearGradient>
     </Modal>
   );
@@ -322,7 +361,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
 const styles = StyleSheet.create({
   background: { flex: 1 },
   container: { flex: 1 },
-  content: { flex: 1, padding: 20 },
+  content: { flex: 1, padding: 20, paddingBottom: 0 },
   
   header: { width: '100%', flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   closeBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, paddingRight: 15 },
@@ -356,6 +395,12 @@ const styles = StyleSheet.create({
   settingRowText: { color: '#ffffff', fontSize: 16, fontWeight: '500' },
   settingRowRight: { flexDirection: 'row', alignItems: 'center' },
   currentLangText: { color: '#aaaaaa', fontSize: 16, marginRight: 8 },
+
+  badgeNew: { backgroundColor: 'rgba(0, 229, 255, 0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)' },
+  badgeNewText: { color: '#00e5ff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  
+  badgeEarn: { backgroundColor: 'rgba(255, 0, 204, 0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: 'rgba(255, 0, 204, 0.3)' },
+  badgeEarnText: { color: '#ff00cc', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
 
   storeButton: { width: '100%', borderRadius: 15, overflow: 'hidden', marginBottom: 20 },
   storeButtonGradient: { flexDirection: 'row', paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },

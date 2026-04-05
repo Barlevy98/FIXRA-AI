@@ -1,5 +1,6 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context'; // <--- הייבוא החדש שהוספנו
 import { ClerkProvider, SignedIn, SignedOut } from '@clerk/clerk-expo';
 import ChatScreen from './src/screens/ChatScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -18,23 +19,26 @@ if (!CLERK_PUBLISHABLE_KEY) {
 
 export default function App() {
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
-      <StatusBar style="light" />
-      
-      {/* אם המשתמש מחובר - תראה לו את הצ'אט, ועטוף אותו במונה ההודעות */}
-      <SignedIn>
-        <PaywallProvider>
-          {/* 2. הוספנו את מודל תנאי השימוש כאן. הוא יקפוץ מעל הצ'אט אם המשתמש עוד לא אישר */}
-          <TermsModal />
-          <ChatScreen />
-        </PaywallProvider>
-      </SignedIn>
-      
-      {/* אם המשתמש מנותק - תראה לו את מסך ההתחברות */}
-      <SignedOut>
-        <LoginScreen />
-      </SignedOut>
-      
-    </ClerkProvider>
+    // עטפנו את כל האפליקציה ב-SafeAreaProvider כדי שהמסכים לא יקפצו למעלה
+    <SafeAreaProvider>
+      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+        <StatusBar style="light" />
+        
+        {/* אם המשתמש מחובר - תראה לו את הצ'אט, ועטוף אותו במונה ההודעות */}
+        <SignedIn>
+          <PaywallProvider>
+            {/* 2. הוספנו את מודל תנאי השימוש כאן. הוא יקפוץ מעל הצ'אט אם המשתמש עוד לא אישר */}
+            <TermsModal />
+            <ChatScreen />
+          </PaywallProvider>
+        </SignedIn>
+        
+        {/* אם המשתמש מנותק - תראה לו את מסך ההתחברות */}
+        <SignedOut>
+          <LoginScreen />
+        </SignedOut>
+        
+      </ClerkProvider>
+    </SafeAreaProvider>
   );
 }

@@ -16,25 +16,28 @@ export async function fetchGameWalkthrough(
 ): Promise<{ message: string; walkthroughData?: any; category: string; isError?: boolean }> {
   try {
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       systemInstruction: `You are an ELITE gaming AI assistant and video analysis expert.
 Language to respond in: ${language}.
 
 CRITICAL RULES BASED ON INPUT TYPE:
-1. VIDEO ONLY (Array of Images): Act as a video analyst. Treat the input images as sequential frames from a short video clip. Analyze movement, progression, and state changes across the frames. Identify the game and objective.
-2. IMAGE ONLY (Single Image): Act as a visual recognition AI. Identify the game, mission, and objective from the visual evidence.
+1. EXACT MISSION IDENTIFICATION (Vision): To identify the specific mission, quest, or objective, you MUST actively scan the images/video for on-screen text (like Quest Logs, Objective Trackers, or HUD text usually located in the corners). Look at the enemies and exact environment.
+2. ANTI-HALLUCINATION PROTOCOL:
+   - If you don't know the GAME, do not guess. Ask the user.
+   - If you know the game, but CANNOT visually verify the EXACT MISSION or objective with high confidence, DO NOT GUESS a random mission. Instead, provide a helpful general observation about what you see, and politely ask the user: "What specific mission or quest are you on?"
+   - Only populate the search queries (YouTube, Wiki, etc.) with specific mission names IF you are 100% sure of the mission. Otherwise, leave the mission part of the query blank or use general terms.
 3. TEXT ONLY: Rely strictly on gaming knowledge.
 
 JSON RESPONSE FORMAT (STRICT):
 {
-  "message": "Direct, short and helpful solution or hint in ${language}. If analyzing a video, explicitly mention what you observed in the clip.",
-  "youtubeQuery": "[Exact Game Name] [Official Mission Name] walkthrough",
-  "wikiQuery": "[Exact Game Name] [Official Mission Name]",
-  "ignQuery": "[Exact Game Name] [Official Mission Name]",
-  "polygonQuery": "[Exact Game Name] [Official Mission Name]",
-  "mapgenieQuery": "[Exact Game Name] [Item or Location]",
-  "fextralifeQuery": "[Exact Game Name] [Boss or Quest]",
-  "category": "The official Game Name"
+  "message": "Direct, short and helpful solution in ${language}. If asking for the mission name, put the question here.",
+  "youtubeQuery": "[Exact Game Name] [Exact Mission Name] walkthrough (leave mission empty if unknown)",
+  "wikiQuery": "[Exact Game Name] [Exact Mission Name] (leave mission empty if unknown)",
+  "ignQuery": "[Exact Game Name] [Exact Mission Name] (leave mission empty if unknown)",
+  "polygonQuery": "[Exact Game Name] [Exact Mission Name] (leave mission empty if unknown)",
+  "mapgenieQuery": "[Exact Game Name] [Item/Location] (leave empty if unknown)",
+  "fextralifeQuery": "[Exact Game Name] [Boss/Quest] (leave empty if unknown)",
+  "category": "The official Game Name (or 'Unknown')"
 }`
     });
 
@@ -61,7 +64,7 @@ JSON RESPONSE FORMAT (STRICT):
             mimeType: 'image/jpeg',
           },
         });
-        promptParts.push("Analyze this game screenshot carefully.");
+        promptParts.push("Analyze this game screenshot carefully. Extract any text that indicates the current quest or objective.");
       } else if (media.type === 'video' && Array.isArray(media.base64)) {
         media.base64.forEach((base64Image, index) => {
           promptParts.push({
@@ -71,7 +74,7 @@ JSON RESPONSE FORMAT (STRICT):
             },
           });
         });
-        promptParts.push("These images are sequential frames from a short video clip. Analyze them to understand the gameplay flow and give a walkthrough.");
+        promptParts.push("These images are sequential frames from a short video clip. Analyze them to understand the gameplay flow, and read any on-screen objective text to find the exact mission.");
       }
     }
 
@@ -175,11 +178,11 @@ JSON RESPONSE FORMAT (STRICT):
     // --- חיתוך הקישורים לפי החבילות החדשות ---
     let allowedLinksCount = 0;
     if (userPlan === 'PREMIUM') {
-      allowedLinksCount = 10; // הכל חופשי
+      allowedLinksCount = 10; 
     } else if (userPlan.startsWith('PRO')) {
-      allowedLinksCount = 3; // מנויי פרו מקבלים 3 קישורים
+      allowedLinksCount = 3; 
     } else {
-      allowedLinksCount = 1; // משתמשים חינמיים בטייר היומי מקבלים רק קישור אחד
+      allowedLinksCount = 1; 
     }
 
     const finalLinks = allAvailableLinks.slice(0, allowedLinksCount);
@@ -201,7 +204,7 @@ JSON RESPONSE FORMAT (STRICT):
     return {
       message: getTranslation(language).aiError || "An error occurred. Don't worry, your credit was not used. Please try again.", 
       category: 'General',
-      isError: true // הדגל שמונע חיוב שווא!
+      isError: true 
     };
   }
 }

@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Animated, Dimensions, Keyboard } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Animated, Dimensions, Keyboard } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as VideoThumbnails from 'expo-video-thumbnails'; 
-import * as FileSystem from 'expo-file-system'; 
-import * as Haptics from 'expo-haptics'; // ייבוא ספריית הרטט החדשה
+import * as FileSystem from 'expo-file-system/legacy'; 
+import * as Haptics from 'expo-haptics'; 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient'; 
 import { MessageType, ChatSession } from '../types';
@@ -58,7 +59,7 @@ export default function ChatScreen() {
   }, {} as Record<string, ChatSession[]>);
 
   const toggleFolder = (category: string) => {
-    Haptics.selectionAsync(); // פידבק בלחיצה על תיקיה
+    Haptics.selectionAsync(); 
     setExpandedFolders(prev => 
       prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]
     );
@@ -320,7 +321,12 @@ export default function ChatScreen() {
       Alert.alert("Permission needed", "Please allow camera access.");
       return;
     }
-    let r = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsEditing: true, quality: 0.5, base64: true });
+    let r = await ImagePicker.launchCameraAsync({ 
+      mediaTypes: ['images', 'videos'], 
+      allowsEditing: true, 
+      quality: 0.5, 
+      base64: true 
+    });
     if(!r.canceled) {
       const asset = r.assets[0];
       if (asset.type === 'video') {
@@ -336,7 +342,12 @@ export default function ChatScreen() {
 
   const openGallery = async () => {
     setIsAttachMenuVisible(false);
-    let r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsEditing: true, quality: 0.5, base64: true });
+    let r = await ImagePicker.launchImageLibraryAsync({ 
+      mediaTypes: ['images', 'videos'], 
+      allowsEditing: true, 
+      quality: 0.5, 
+      base64: true 
+    });
     if(!r.canceled) {
       const asset = r.assets[0];
       if (asset.type === 'video') {
@@ -366,7 +377,7 @@ export default function ChatScreen() {
       return; 
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // רטט כיפי בלחיצה על "שלח"
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
 
     const userText = inputText.trim();
     const currentMedia = selectedMedia;
@@ -389,18 +400,16 @@ export default function ChatScreen() {
     updatedMsgs = [...updatedMsgs, { id: loadingId, sender: 'bot', isLoading: true }];
     updateCurrentSession(updatedMsgs);
 
-    // מחכים לתשובה מה-AI לפני שיורד הקרדיט!
     const response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, messages, currentPlan);
     
     updatedMsgs = updatedMsgs.map(msg => msg.id === loadingId ? { id: loadingId, text: response.message, walkthroughData: response.walkthroughData, sender: 'bot' } : msg);
     updateCurrentSession(updatedMsgs, response.category);
 
-    // רק אם התשובה חזרה בהצלחה בלי שגיאה - נספור את ההודעה
     if (!response.isError) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // הכל הצליח - רטט טוב
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); 
       incrementMessageCount();
     } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); // שגיאה מהשרת
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); 
     }
   };
 
@@ -680,7 +689,7 @@ export default function ChatScreen() {
                     )}
                     <TextInput 
                       style={[styles.input, selectedMedia ? { paddingTop: PREVIEW_HEIGHT + 10 } : null]} 
-                      placeholder={t.placeholder} 
+                      placeholder={selectedMedia ? "Add game name for perfect answer..." : t.placeholder} 
                       placeholderTextColor="#aaaaaa" 
                       value={inputText} 
                       onChangeText={setInputText} 
