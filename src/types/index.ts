@@ -10,7 +10,7 @@ export interface MessageType {
     youtube?: { videoId: string; title: string; thumbnail: string };
     wiki?: { title: string; url: string; thumbnail: string };
     ign?: { title: string; url: string; thumbnail: string };
-    // אלו השורות החדשות שצריך להוסיף:
+    
     polygon?: { title: string; url: string; thumbnail: string };
     mapgenie?: { title: string; url: string; thumbnail: string };
     fextralife?: { title: string; url: string; thumbnail: string };

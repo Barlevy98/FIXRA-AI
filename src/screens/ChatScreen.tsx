@@ -46,6 +46,10 @@ export default function ChatScreen() {
   const [expandedFolders, setExpandedFolders] = useState<string[]>(['General']);
   
   const slideAnim = useRef(new Animated.Value(screenWidth)).current;
+  
+  // הנה הרפרנס החדש ששולט בגלילה של הצ'אט!
+  const scrollViewRef = useRef<ScrollView>(null);
+  
   const SESSIONS_KEY = `@fixra_sessions_${user?.id || 'guest'}`;
 
   const t = getTranslation(chatLanguage);
@@ -97,25 +101,11 @@ export default function ChatScreen() {
     };
   }, [user, hasCheckedTutorial]);
 
-  const handleCloseTutorial = async () => {
-    setIsTutorialVisible(false);
-    if (user?.id) {
-      try {
-        const token = await getToken({ template: 'supabase' });
-        if (token) {
-          await markTutorialAsSeen(token, user.id);
-        }
-      } catch(e) {
-         console.error('Error marking tutorial as seen', e);
-      }
-    }
-  };
-
   useEffect(() => {
     if (messages.length === 1 && messages[0].sender === 'bot' && messages[0].text !== greetingText) {
       const updatedMessages = [{ ...messages[0], text: greetingText }];
       setMessages(updatedMessages);
-      if (currentSessionId) {
+      if (currentSessionId && sessions.some(s => s.id === currentSessionId)) {
         setSessions(prev => {
           const updated = prev.map(s => s.id === currentSessionId ? { ...s, messages: updatedMessages } : s);
           AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updated)).catch(()=>{});
@@ -123,7 +113,7 @@ export default function ChatScreen() {
         });
       }
     }
-  }, [greetingText, messages, currentSessionId]);
+  }, [greetingText, messages, currentSessionId, sessions]);
 
   useEffect(() => { 
     if (user) loadSessions(); 
@@ -132,27 +122,20 @@ export default function ChatScreen() {
   const loadSessions = async () => {
     try {
       let loadedFromServer = false;
+      let loadedSessions: ChatSession[] = [];
 
       if (user?.id) {
         const token = await getToken({ template: 'supabase' });
-        
         if (token) {
           const serverSessions = await getUserChatSessions(token, user.id);
-          
           if (serverSessions && serverSessions.length > 0) {
-            const formattedSessions: ChatSession[] = serverSessions.map(s => ({
+            loadedSessions = serverSessions.map(s => ({
               id: s.id,
               title: s.title,
               category: s.category || 'General',
               messages: s.messages,
               updatedAt: s.updated_at
             }));
-
-            setSessions(formattedSessions);
-            setCurrentSessionId(formattedSessions[0].id);
-            setMessages(formattedSessions[0].messages);
-
-            await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(formattedSessions));
             loadedFromServer = true;
           }
         }
@@ -161,19 +144,17 @@ export default function ChatScreen() {
       if (!loadedFromServer) {
         const saved = await AsyncStorage.getItem(SESSIONS_KEY);
         if (saved) {
-          const parsedSessions: ChatSession[] = JSON.parse(saved);
-          const upgradedSessions = parsedSessions.map(s => ({ ...s, category: s.category || 'General' }));
-          setSessions(upgradedSessions);
-          if (upgradedSessions.length > 0) {
-            setCurrentSessionId(upgradedSessions[0].id);
-            setMessages(upgradedSessions[0].messages);
-          } else {
-            createNewSession();
-          }
-        } else {
-          createNewSession();
+          loadedSessions = JSON.parse(saved).map((s: ChatSession) => ({ ...s, category: s.category || 'General' }));
         }
       }
+
+      setSessions(loadedSessions);
+      if (loadedSessions.length > 0) {
+        await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(loadedSessions));
+      }
+      
+      createNewSession();
+
     } catch (e) { 
       console.error('Load sessions error', e); 
       createNewSession(); 
@@ -192,12 +173,9 @@ export default function ChatScreen() {
     const newId = Date.now().toString();
     const initialMessage: MessageType = { id: '1', text: greetingText, sender: 'bot' };
     
-    const newSession: ChatSession = { id: newId, title: t.newChatName, category: 'General', messages: [initialMessage], updatedAt: Date.now() };
-    const updatedSessions = [newSession, ...sessions];
-    
     setCurrentSessionId(newId);
     setMessages([initialMessage]);
-    saveSessionsToStorage(updatedSessions);
+    
     if (!expandedFolders.includes('General')) {
         setExpandedFolders(prev => [...prev, 'General']);
     }
@@ -222,11 +200,9 @@ export default function ChatScreen() {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           const updatedSessions = sessions.filter(s => s.id !== sessionId);
           saveSessionsToStorage(updatedSessions);
+          
           if (currentSessionId === sessionId) {
-            if (updatedSessions.length > 0) {
-              setCurrentSessionId(updatedSessions[0].id);
-              setMessages(updatedSessions[0].messages);
-            } else { createNewSession(); }
+            createNewSession();
           }
         }
       }
@@ -235,42 +211,100 @@ export default function ChatScreen() {
 
   const updateCurrentSession = (newMessages: MessageType[], newCategory?: string) => {
     setMessages(newMessages);
-    if (currentSessionId) {
-      const updatedSessions = sessions.map(s => {
-        if (s.id === currentSessionId) {
-          let newTitle = s.title;
-          const userMessages = newMessages.filter(m => m.sender === 'user');
-          if (userMessages.length === 1 && (s.title === t.newChatName || s.title.startsWith('Chat from') || s.title.startsWith('שיחה מ-'))) {
-            const firstUserMsg = userMessages[0];
-            if (firstUserMsg.text) {
-              const words = firstUserMsg.text.trim().split(/\s+/);
-              newTitle = words.slice(0, 4).join(' ') + (words.length > 4 ? '...' : '');
-            } else if (firstUserMsg.mediaType === 'image') {
-              newTitle = '📷 Image Search';
-            } else if (firstUserMsg.mediaType === 'video') {
-              newTitle = '🎥 Video Search';
-            }
-          }
-          
-          const updatedSession = { ...s, messages: newMessages, updatedAt: Date.now(), title: newTitle, category: newCategory || s.category };
-          
-          if (user?.id) {
-            getToken({ template: 'supabase' }).then(token => {
-              if (token) {
-                saveChatSession(token, updatedSession.id, user.id, updatedSession.title, updatedSession.messages, updatedSession.category);
-              }
-            });
-          }
+    if (!currentSessionId) return;
 
-          return updatedSession;
+    let updatedSessions = [...sessions];
+    let sessionIndex = updatedSessions.findIndex(s => s.id === currentSessionId);
+
+    let newTitle = t.newChatName;
+    let finalCategory = 'General';
+
+    const userMessages = newMessages.filter(m => m.sender === 'user');
+
+    if (sessionIndex >= 0) {
+      const s = updatedSessions[sessionIndex];
+      newTitle = s.title;
+      finalCategory = s.category;
+
+      if (userMessages.length === 1 && (s.title === t.newChatName || s.title.startsWith('Chat from') || s.title.startsWith('שיחה מ-'))) {
+        const firstUserMsg = userMessages[0];
+        if (firstUserMsg.text) {
+          const words = firstUserMsg.text.trim().split(/\s+/);
+          newTitle = words.slice(0, 4).join(' ') + (words.length > 4 ? '...' : '');
+        } else if (firstUserMsg.mediaType === 'image') {
+          newTitle = '📷 Image Search';
+        } else if (firstUserMsg.mediaType === 'video') {
+          newTitle = '🎥 Video Search';
         }
-        return s;
-      });
-      updatedSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-      saveSessionsToStorage(updatedSessions);
+      }
+
+      if (newCategory && newCategory !== 'Unknown' && newCategory !== 'General') {
+        if (finalCategory === 'General' || !finalCategory) {
+          finalCategory = newCategory;
+        }
+      }
+    } else {
+      if (userMessages.length > 0) {
+        const firstUserMsg = userMessages[0];
+        if (firstUserMsg.text) {
+          const words = firstUserMsg.text.trim().split(/\s+/);
+          newTitle = words.slice(0, 4).join(' ') + (words.length > 4 ? '...' : '');
+        } else if (firstUserMsg.mediaType === 'image') {
+          newTitle = '📷 Image Search';
+        } else if (firstUserMsg.mediaType === 'video') {
+          newTitle = '🎥 Video Search';
+        }
+      }
       
-      if (newCategory && !expandedFolders.includes(newCategory)) {
-          setExpandedFolders(prev => [...prev, newCategory]);
+      if (newCategory && newCategory !== 'Unknown') {
+        finalCategory = newCategory;
+      }
+    }
+
+    const updatedSession = {
+      id: currentSessionId,
+      title: newTitle,
+      category: finalCategory,
+      messages: newMessages,
+      updatedAt: Date.now()
+    };
+
+    if (sessionIndex >= 0) {
+      updatedSessions[sessionIndex] = updatedSession;
+    } else {
+      if (userMessages.length > 0) {
+        updatedSessions.unshift(updatedSession);
+      } else {
+        return; 
+      }
+    }
+
+    updatedSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    saveSessionsToStorage(updatedSessions);
+
+    if (finalCategory && !expandedFolders.includes(finalCategory)) {
+        setExpandedFolders(prev => [...prev, finalCategory]);
+    }
+
+    if (user?.id && userMessages.length > 0) {
+      getToken({ template: 'supabase' }).then(token => {
+        if (token) {
+          saveChatSession(token, updatedSession.id, user.id, updatedSession.title, updatedSession.messages, updatedSession.category);
+        }
+      });
+    }
+  };
+
+  const handleCloseTutorial = async (): Promise<void> => {
+    setIsTutorialVisible(false);
+    if (user?.id) {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        if (token) {
+          await markTutorialAsSeen(token, user.id);
+        }
+      } catch(e) {
+         console.error('Error marking tutorial as seen', e);
       }
     }
   };
@@ -603,11 +637,15 @@ export default function ChatScreen() {
         <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={{ flex: 1 }}>
             
+            {/* הנה ה-ScrollView המעודכן שלנו שגולל אוטומטית למטה! */}
             <ScrollView 
+              ref={scrollViewRef}
               style={styles.chatArea} 
               contentContainerStyle={{ padding: 15, paddingBottom: 20 }} 
               keyboardShouldPersistTaps="handled"
               onScrollBeginDrag={closeMenus}
+              onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+              onLayout={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
             >
               {messages.map((msg) => (
                 <View key={msg.id} style={[styles.messageBubbleWrapper, msg.sender === 'user' ? styles.userBubbleWrapper : styles.botBubbleWrapper]}>
@@ -697,7 +735,7 @@ export default function ChatScreen() {
                       multiline 
                     />
                   </View>
-                  <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
+                  <TouchableOpacity testID="send-button" onPress={sendMessage} style={styles.sendButton}>
                     <Ionicons name="send" size={22} color="#00e5ff" style={{ paddingBottom: Platform.OS === 'ios' ? 12 : 14 }} />
                   </TouchableOpacity>
                 </View>
@@ -711,7 +749,7 @@ export default function ChatScreen() {
 
         <PaywallModal visible={isPaywallVisible} onClose={() => setIsPaywallVisible(false)} />
         <ProfileModal visible={isProfileVisible} onClose={() => setIsProfileVisible(false)} onOpenPaywall={() => setIsPaywallVisible(true)} />
-        <TutorialModal visible={isTutorialVisible} onClose={handleCloseTutorial} />
+        <TutorialModal visible={isTutorialVisible} onClose={() => { handleCloseTutorial(); }} />
         <TermsModal />
         
       </SafeAreaView>

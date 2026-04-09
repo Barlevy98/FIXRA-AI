@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useUser, useAuth } from '@clerk/clerk-expo'; // הוספנו את useAuth
+import { useUser, useAuth } from '@clerk/clerk-expo'; 
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { getUserTosStatus, markTosAsAccepted } from '../utils/db'; // מייבאים את הפונקציות מהשרת
+import { getUserTosStatus, markTosAsAccepted } from '../utils/db'; 
 
 export default function TermsModal() {
   const { user } = useUser();
-  const { getToken } = useAuth(); // משתמשים בזה כדי לקבל גישה ל-Supabase
+  const { getToken } = useAuth(); 
   const [isVisible, setIsVisible] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
 
