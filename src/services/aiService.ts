@@ -16,7 +16,7 @@ export async function fetchGameWalkthrough(
 ): Promise<{ message: string; walkthroughData?: any; category: string; isError?: boolean }> {
   try {
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.5-flash-lite',
       systemInstruction: `You are an ELITE gaming AI assistant and video analysis expert.
 Language to respond in: ${language}.
 
@@ -43,6 +43,7 @@ JSON RESPONSE FORMAT (STRICT):
 
     let history = previousMessages
       .filter(msg => msg.text && !msg.isLoading) 
+      .slice(-6) // <--- הקסם קורה פה: חותך ולוקח רק את 6 ההודעות האחרונות
       .map(msg => ({
         role: msg.sender === 'user' ? 'user' : 'model',
         parts: [{ text: msg.text as string }]

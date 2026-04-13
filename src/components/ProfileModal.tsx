@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, Image, Platform, ScrollView, Alert } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, Image, Platform, ScrollView, Alert, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { usePaywall } from '../context/PaywallContext';
 import { getTranslation } from '../utils/translations'; 
 import AffiliateModal from './AffiliateModal'; 
+import SettingsScreen from '../screens/SettingsScreen'; 
+import * as Haptics from 'expo-haptics';
+// 🌟 ייבאנו את פונקציית העדכון מהדאטה-בייס
+import { updateUserName } from '../utils/db'; 
 
 interface ProfileModalProps {
   visible: boolean;
@@ -14,52 +18,28 @@ interface ProfileModalProps {
   onOpenPaywall: () => void;
 }
 
-const LANGUAGES = [
-  { id: 'English', label: 'English', icon: '🇺🇸' },
-  { id: 'Hebrew', label: 'עברית', icon: '🇮🇱' },
-  { id: 'Russian', label: 'Русский', icon: '🇷🇺' },
-  { id: 'Arabic', label: 'العربية', icon: '🇦🇪' }
-];
-
 export default function ProfileModal({ visible, onClose, onOpenPaywall }: ProfileModalProps) {
   const { user } = useUser();
-  const insets = useSafeAreaInsets(); // <--- הוספנו את המדידה של המסך
-  const { signOut } = useAuth();
+  const { getToken } = useAuth();
+  const insets = useSafeAreaInsets(); 
   
-  const { isPro, currentPlan, chatLanguage, changeLanguage, resetToFree } = usePaywall();
+  const { isPro, currentPlan, chatLanguage, resetToFree } = usePaywall();
   
-  const [showLangMenu, setShowLangMenu] = useState(false);
-  const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPlanDetails, setShowPlanDetails] = useState(false);
-  
-  // סטייטים עבור תוכנית השותפים
   const [showAffiliateModal, setShowAffiliateModal] = useState(false);
   const [affiliateMode, setAffiliateMode] = useState<'invite' | 'creator'>('invite');
+  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+
+  // 🌟 סטייטים חדשים לעריכת השם
+  const [isEditNameVisible, setIsEditNameVisible] = useState(false);
+  const [newName, setNewName] = useState('');
 
   const t = getTranslation(chatLanguage);
-  
-  const currentLangObj = LANGUAGES.find(l => l.id === chatLanguage) || LANGUAGES[0];
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      onClose();
-    } catch (err) {
-      console.error('Error signing out:', err);
-    }
-  };
-
-  const selectLanguage = (langId: string) => {
-    changeLanguage(langId);
-    setShowLangMenu(false);
-  };
 
   const handleOpenStore = () => {
     setShowPlanDetails(false); 
-    
     setTimeout(() => {
       onClose(); 
-      
       setTimeout(() => {
         onOpenPaywall();
       }, 500); 
@@ -69,7 +49,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   const handleCancelSubscription = () => {
     Alert.alert(
       "Cancel Subscription",
-      "Are you sure? Your plan will remain active until the end of your current billing cycle (one full month from your exact purchase date).\n\nThere are no refunds for partial months. You will not be charged again.",
+      "Are you sure? Your plan will remain active until the end of your current billing cycle.\n\nThere are no refunds for partial months.",
       [
         { text: "Keep Plan", style: "cancel" },
         { 
@@ -83,6 +63,47 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
         }
       ]
     );
+  };
+
+  // 🌟 הפונקציה ששומרת את השם ב-Clerk וב-Supabase
+  const handleSaveName = async () => {
+    if (!newName.trim() || !user) {
+      setIsEditNameVisible(false);
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      // 1. מעדכנים ב-Clerk כדי שה-UI יתעדכן מיד בכל האפליקציה
+      const nameParts = newName.trim().split(' ');
+      const firstName = nameParts[0];
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+      
+      await user.update({
+        firstName: firstName,
+        lastName: lastName,
+      });
+
+      // 2. מעדכנים ב-Supabase שיהיה לנו גם בדאטה-בייס
+      const token = await getToken({ template: 'supabase' });
+      if (token) {
+        await updateUserName(token, user.id, newName.trim());
+      }
+
+      setIsEditNameVisible(false);
+    } catch (error) {
+      console.error("Failed to update name:", error);
+      Alert.alert("Error", "Could not update your name. Please try again.");
+    }
+  };
+
+  const openEditNameModal = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // ממלאים את השדה בשם הנוכחי
+    const currentFullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
+    setNewName(currentFullName);
+    setIsEditNameVisible(true);
   };
 
   const getActivePlanFeatures = () => {
@@ -106,19 +127,20 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   return (
     <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
       <LinearGradient colors={['#050012', '#0a0026', '#000000']} style={styles.background}>
-        {/* התיקון כאן: החלפנו את ה-SafeAreaView ב-View רגיל שדוחף את התוכן למטה */}
         <View style={[styles.container, { paddingTop: Math.max(insets.top, 20) }]}>
           <View style={styles.content}>
             
-            {/* Header / כפתור חזרה */}
             <View style={styles.header}>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                 <Ionicons name="chevron-down" size={28} color="#aaaaaa" />
                 <Text style={styles.closeBtnText}>{t.profileBack}</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => setIsSettingsVisible(true)} style={styles.settingsBtn}>
+                <Ionicons name="settings-outline" size={24} color="#aaaaaa" />
+              </TouchableOpacity>
             </View>
 
-            {/* אזור פרופיל / תמונה */}
             <View style={styles.profileSection}>
               <View style={styles.avatarContainer}>
                 {user?.imageUrl ? (
@@ -134,13 +156,20 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                   </View>
                 )}
               </View>
-              <Text style={styles.name}>{user?.firstName} {user?.lastName}</Text>
+              
+              {/* 🌟 השם + כפתור עריכה לידו */}
+              <TouchableOpacity style={styles.nameEditContainer} onPress={openEditNameModal} activeOpacity={0.7}>
+                <Text style={styles.name}>
+                  {[user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Gamer'}
+                </Text>
+                <Ionicons name="pencil" size={18} color="#00e5ff" style={styles.editIcon} />
+              </TouchableOpacity>
+              
               <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress}</Text>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
               
-              {/* --- אזור הסטטוס מנוי --- */}
               <View style={styles.cardWrapper}>
                 <Text style={styles.sectionTitle}>{t.profileStatus}</Text>
                 
@@ -173,7 +202,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                 </TouchableOpacity>
               </View>
 
-              {/* --- אזור תוכנית שותפים (Earn with Fixra) --- */}
               <View style={styles.cardWrapper}>
                 <Text style={styles.sectionTitle}>Earn with Fixra</Text>
                 
@@ -200,33 +228,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                 </TouchableOpacity>
               </View>
 
-              {/* --- אזור ההגדרות (שפה + תנאי שימוש) --- */}
-              <View style={styles.cardWrapper}>
-                <Text style={styles.sectionTitle}>{t.profileSettings}</Text>
-                
-                <TouchableOpacity style={styles.settingRow} onPress={() => setShowLangMenu(true)}>
-                  <View style={styles.settingRowLeft}>
-                    <Ionicons name="globe-outline" size={22} color="#aaaaaa" style={{ marginRight: 10 }} />
-                    <Text style={styles.settingRowText}>{t.profileLang}</Text>
-                  </View>
-                  <View style={styles.settingRowRight}>
-                    <Text style={styles.currentLangText}>{currentLangObj.icon} {currentLangObj.label}</Text>
-                    <Ionicons name="chevron-forward" size={20} color="#555" />
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.settingRow, {marginTop: 10}]} onPress={() => setShowTermsModal(true)}>
-                  <View style={styles.settingRowLeft}>
-                    <Ionicons name="document-text-outline" size={22} color="#aaaaaa" style={{ marginRight: 10 }} />
-                    <Text style={styles.settingRowText}>Terms & Privacy</Text>
-                  </View>
-                  <View style={styles.settingRowRight}>
-                    <Ionicons name="chevron-forward" size={20} color="#555" />
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              {/* כפתור החנות הרגיל */}
               {!isPro && (
                 <TouchableOpacity style={styles.storeButton} onPress={handleOpenStore}>
                   <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.storeButtonGradient}>
@@ -236,77 +237,10 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                 </TouchableOpacity>
               )}
 
-              {/* כפתור יציאה */}
-              <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
-                <Ionicons name="log-out-outline" size={20} color="#ff4444" style={styles.btnIcon} />
-                <Text style={styles.logoutButtonText}>{t.profileLogout}</Text>
-              </TouchableOpacity>
-
             </ScrollView>
           </View>
 
-          {/* --- חלונות קופצים (Modals) --- */}
-
-          {/* 1. מודל בחירת שפה */}
-          <Modal animationType="slide" transparent={true} visible={showLangMenu} onRequestClose={() => setShowLangMenu(false)}>
-            <View style={styles.bottomSheetOverlay}>
-              <View style={styles.bottomSheet}>
-                <View style={styles.bottomSheetHeader}>
-                  <Text style={styles.bottomSheetTitle}>{t.profileLang}</Text>
-                  <TouchableOpacity onPress={() => setShowLangMenu(false)} style={styles.bottomSheetClose}>
-                    <Ionicons name="close-circle" size={28} color="#555" />
-                  </TouchableOpacity>
-                </View>
-                
-                {LANGUAGES.map((item) => (
-                  <TouchableOpacity 
-                    key={item.id} 
-                    style={[styles.langOption, chatLanguage === item.id && styles.langOptionActive]}
-                    onPress={() => selectLanguage(item.id)}
-                  >
-                    <Text style={styles.langOptionIcon}>{item.icon}</Text>
-                    <Text style={[styles.langOptionText, chatLanguage === item.id && styles.langOptionTextActive]}>{item.label}</Text>
-                    {chatLanguage === item.id && <Ionicons name="checkmark" size={24} color="#ff00cc" style={{ marginLeft: 'auto' }} />}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </Modal>
-
-          {/* 2. מודל תנאי שימוש */}
-          <Modal animationType="slide" transparent={true} visible={showTermsModal} onRequestClose={() => setShowTermsModal(false)}>
-            <View style={styles.bottomSheetOverlay}>
-              <View style={[styles.bottomSheet, { height: '80%' }]}>
-                <View style={styles.bottomSheetHeader}>
-                  <Text style={styles.bottomSheetTitle}>Terms & Privacy</Text>
-                  <TouchableOpacity onPress={() => setShowTermsModal(false)} style={styles.bottomSheetClose}>
-                    <Ionicons name="close-circle" size={28} color="#555" />
-                  </TouchableOpacity>
-                </View>
-                
-                <ScrollView showsVerticalScrollIndicator={true} style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={styles.termsText}>
-                    <Text style={styles.boldText}>1. Acceptance of Terms</Text>{'\n'}
-                    By accessing and using FIXRA, you accept and agree to be bound by the terms and provision of this agreement.{'\n\n'}
-                    
-                    <Text style={styles.boldText}>2. Use of AI Features</Text>{'\n'}
-                    Our AI provides gaming hints and walkthroughs. While we strive for accuracy, FIXRA is not responsible for any progression loss or incorrect game guidance.{'\n\n'}
-                    
-                    <Text style={styles.boldText}>3. Privacy & Data</Text>{'\n'}
-                    We process your chat history and uploaded media solely to provide you with the best gaming solutions. We do not share your personal data with third parties.{'\n\n'}
-                    
-                    <Text style={styles.boldText}>4. Subscriptions & Payments</Text>{'\n'}
-                    Purchases made through FIXRA PRO or specific message packages are billed securely. You can manage your subscription at any time.{'\n\n'}
-                    
-                    <Text style={styles.boldText}>5. User Conduct</Text>{'\n'}
-                    You agree not to use the service for any unlawful purpose or to upload explicit or harmful content to the AI system.
-                  </Text>
-                </ScrollView>
-              </View>
-            </View>
-          </Modal>
-
-          {/* 3. מודל פרטי חבילה וניהול מנוי */}
+          {/* מודלים קיימים (תוכנית, שותפים, הגדרות) */}
           <Modal animationType="slide" transparent={true} visible={showPlanDetails} onRequestClose={() => setShowPlanDetails(false)}>
             <View style={styles.bottomSheetOverlay}>
               <View style={[styles.bottomSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : 20 }]}>
@@ -318,9 +252,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                 </View>
 
                 <View style={styles.planDetailsCard}>
-                  <Text style={styles.planDetailsTitle}>
-                    {getDisplayPlanName()}
-                  </Text>
+                  <Text style={styles.planDetailsTitle}>{getDisplayPlanName()}</Text>
                   <View style={styles.planFeaturesList}>
                     {getActivePlanFeatures().map((feature, index) => (
                       <View key={index} style={styles.planFeatureRow}>
@@ -340,17 +272,46 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                     <Text style={styles.upgradePlanBtnText}>Upgrade Plan</Text>
                   </TouchableOpacity>
                 )}
-                
               </View>
             </View>
           </Modal>
 
-          {/* 4. מודל תוכנית השותפים האמיתי שמחובר לדאטה בייס */}
-          <AffiliateModal 
-            visible={showAffiliateModal} 
-            onClose={() => setShowAffiliateModal(false)} 
-            mode={affiliateMode} 
-          />
+          <AffiliateModal visible={showAffiliateModal} onClose={() => setShowAffiliateModal(false)} mode={affiliateMode} />
+          <SettingsScreen visible={isSettingsVisible} onClose={() => setIsSettingsVisible(false)} />
+
+          {/* 🌟 חלונית עריכת השם החדשה */}
+          <Modal animationType="fade" transparent={true} visible={isEditNameVisible} onRequestClose={() => setIsEditNameVisible(false)}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  
+                  <Text style={styles.modalTitle}>Edit Profile Name</Text>
+                  <Text style={styles.modalSubtitle}>Choose how FIXRA will call you</Text>
+
+                  <TextInput
+                    style={styles.nameInput}
+                    value={newName}
+                    onChangeText={setNewName}
+                    placeholder="Enter your name or Gamer Tag"
+                    placeholderTextColor="#888"
+                    autoFocus={true}
+                    maxLength={30}
+                  />
+
+                  <TouchableOpacity activeOpacity={0.8} style={styles.saveBtn} onPress={handleSaveName}>
+                    <LinearGradient colors={['#00e5ff', '#0088ff']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.saveBtnGradient}>
+                      <Text style={styles.saveBtnText}>Save Changes</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => setIsEditNameVisible(false)} style={styles.cancelBtn}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </Modal>
 
         </View>
       </LinearGradient>
@@ -363,16 +324,22 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { flex: 1, padding: 20, paddingBottom: 0 },
   
-  header: { width: '100%', flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  closeBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, paddingRight: 15 },
+  header: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  closeBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
   closeBtnText: { color: '#aaaaaa', fontSize: 16, marginLeft: 5, fontWeight: '500' },
+  settingsBtn: { padding: 5, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   
   profileSection: { alignItems: 'center', marginBottom: 30 },
   avatarContainer: { position: 'relative', marginBottom: 15 },
   avatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#8a2be2' },
   avatarPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#1e1e1e', borderWidth: 3, borderColor: '#8a2be2', alignItems: 'center', justifyContent: 'center' },
   proBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#ff00cc', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#0a0026' },
-  name: { fontSize: 26, fontWeight: 'bold', color: '#ffffff', marginBottom: 5 },
+  
+  // 🌟 סטיילים לעריכת השם
+  nameEditContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 5, paddingHorizontal: 15 },
+  name: { fontSize: 26, fontWeight: 'bold', color: '#ffffff' },
+  editIcon: { marginLeft: 10, marginTop: 4 },
+  
   email: { fontSize: 15, color: '#aaaaaa' },
 
   cardWrapper: { width: '100%', marginBottom: 25 },
@@ -394,7 +361,6 @@ const styles = StyleSheet.create({
   settingRowLeft: { flexDirection: 'row', alignItems: 'center' },
   settingRowText: { color: '#ffffff', fontSize: 16, fontWeight: '500' },
   settingRowRight: { flexDirection: 'row', alignItems: 'center' },
-  currentLangText: { color: '#aaaaaa', fontSize: 16, marginRight: 8 },
 
   badgeNew: { backgroundColor: 'rgba(0, 229, 255, 0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)' },
   badgeNewText: { color: '#00e5ff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
@@ -407,25 +373,11 @@ const styles = StyleSheet.create({
   storeButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
   btnIcon: { marginRight: 8 },
 
-  spacer: { flex: 1 },
-  
-  logoutButton: { flexDirection: 'row', backgroundColor: 'rgba(255, 68, 68, 0.05)', paddingVertical: 15, borderRadius: 15, width: '100%', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255, 68, 68, 0.2)', marginBottom: Platform.OS === 'ios' ? 10 : 30 },
-  logoutButtonText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold' },
-
   bottomSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   bottomSheet: { backgroundColor: '#0a0026', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, paddingBottom: Platform.OS === 'ios' ? 50 : 30, borderWidth: 1, borderColor: '#333', borderBottomWidth: 0 },
   bottomSheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#333', paddingBottom: 15 },
   bottomSheetTitle: { color: '#ffffff', fontSize: 20, fontWeight: 'bold' },
   bottomSheetClose: { padding: 5 },
-  
-  langOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 10, borderRadius: 15, marginBottom: 5 },
-  langOptionActive: { backgroundColor: 'rgba(255, 0, 204, 0.1)' }, 
-  langOptionIcon: { fontSize: 24, marginRight: 15 },
-  langOptionText: { color: '#ffffff', fontSize: 18 },
-  langOptionTextActive: { color: '#ff00cc', fontWeight: 'bold' },
-
-  termsText: { color: '#cccccc', fontSize: 15, lineHeight: 24 },
-  boldText: { color: '#ffffff', fontWeight: 'bold', fontSize: 17 },
 
   planDetailsCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, padding: 20, marginBottom: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   planDetailsTitle: { color: '#ffffff', fontSize: 22, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
@@ -437,5 +389,17 @@ const styles = StyleSheet.create({
   cancelPlanBtnText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold' },
   
   upgradePlanBtn: { width: '100%', paddingVertical: 16, borderRadius: 15, backgroundColor: 'rgba(0, 229, 255, 0.1)', borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.4)', alignItems: 'center' },
-  upgradePlanBtnText: { color: '#00e5ff', fontSize: 16, fontWeight: 'bold' }
+  upgradePlanBtnText: { color: '#00e5ff', fontSize: 16, fontWeight: 'bold' },
+
+  // 🌟 סטיילים לחלונית עריכת השם
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { width: '100%', backgroundColor: '#0a0026', borderRadius: 30, padding: 30, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)' },
+  modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#ffffff', marginBottom: 10 },
+  modalSubtitle: { fontSize: 15, color: '#aaaaaa', textAlign: 'center', marginBottom: 25 },
+  nameInput: { width: '100%', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 15, color: '#ffffff', fontSize: 18, paddingVertical: 16, paddingHorizontal: 20, textAlign: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', marginBottom: 25 },
+  saveBtn: { width: '100%', borderRadius: 15, overflow: 'hidden', marginBottom: 15 },
+  saveBtnGradient: { paddingVertical: 18, alignItems: 'center', justifyContent: 'center' },
+  saveBtnText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
+  cancelBtn: { padding: 10 },
+  cancelBtnText: { color: '#888', fontSize: 16, fontWeight: 'bold' }
 });

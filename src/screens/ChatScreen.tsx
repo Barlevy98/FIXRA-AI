@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Animated, Dimensions, Keyboard } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Animated, Dimensions, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as VideoThumbnails from 'expo-video-thumbnails'; 
@@ -9,69 +8,100 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics'; 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient'; 
-import { MessageType, ChatSession } from '../types';
-import { fetchGameWalkthrough } from '../services/aiService';
+import { MessageType } from '../types';
 import { usePaywall } from '../context/PaywallContext';
 import PaywallModal from '../components/PaywallModal';
 import ProfileModal from '../components/ProfileModal';
 import TutorialModal from '../components/TutorialModal';
 import TermsModal from '../components/TermsModal'; 
+import FavoritesScreen from './FavoritesScreen';
+import SettingsScreen from './SettingsScreen';
+import CommunityModal from '../components/CommunityModal'; 
 import { getTranslation } from '../utils/translations';
-import { saveChatSession, getUserChatSessions, getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus } from '../utils/db';
+import { getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus, saveBookmark, getUserBookmarks } from '../utils/db';
+import MessageBubble from '../components/MessageBubble';
+import ChatInputArea from '../components/ChatInputArea';
+import ChatSideMenu from '../components/ChatSideMenu';
+// 🌟 ה-Hook החדש שלנו!
+import { useChatManager } from '../../hooks/useChatManager';
 
-const PREVIEW_HEIGHT = 80;
 const screenWidth = Dimensions.get('window').width;
+
+const AnimatedMessageItem = ({ isUser, children }: { isUser: boolean, children: React.ReactNode }) => {
+  const slideAnim = useRef(new Animated.Value(20)).current; 
+  const fadeAnim = useRef(new Animated.Value(0)).current; 
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(slideAnim, { toValue: 0, duration: 350, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 350, useNativeDriver: true })
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={[
+      styles.messageBubbleWrapper, 
+      isUser ? styles.userBubbleWrapper : styles.botBubbleWrapper,
+      { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
+    ]}>
+      {children}
+    </Animated.View>
+  );
+};
 
 export default function ChatScreen() {
   const { user } = useUser();
   const { getToken } = useAuth();
-  
   const { incrementMessageCount, hasReachedLimit, chatLanguage, currentPlan } = usePaywall();
   
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<MessageType[]>([]);
+  const t = getTranslation(chatLanguage);
+  const greetingText = t.greeting(user?.firstName || '');
+
+  // 🌟 קוראים לכל המוח של הצ'אט בשורה אחת!
+  const chatManager = useChatManager(user, getToken, chatLanguage, currentPlan, t, greetingText);
+
   const [inputText, setInputText] = useState('');
-  
   const [selectedMedia, setSelectedMedia] = useState<{uri: string, type: 'image' | 'video', base64?: string | string[], thumbnailUri?: string} | null>(null);
+  
+  const [bookmarkedMessageIds, setBookmarkedMessageIds] = useState<string[]>([]);
+  const [bookmarkedTexts, setBookmarkedTexts] = useState<string[]>([]);
   
   const [isPaywallVisible, setIsPaywallVisible] = useState(false);
   const [isProfileVisible, setIsProfileVisible] = useState(false);
+  const [isFavoritesVisible, setIsFavoritesVisible] = useState(false);
+  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+  const [isCommunityVisible, setIsCommunityVisible] = useState(false); 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAttachMenuVisible, setIsAttachMenuVisible] = useState(false);
   
   const [isTutorialVisible, setIsTutorialVisible] = useState(false);
   const [hasCheckedTutorial, setHasCheckedTutorial] = useState(false);
   
-  const [expandedFolders, setExpandedFolders] = useState<string[]>(['General']);
-  
   const slideAnim = useRef(new Animated.Value(screenWidth)).current;
-  
-  // הנה הרפרנס החדש ששולט בגלילה של הצ'אט!
   const scrollViewRef = useRef<ScrollView>(null);
-  
-  const SESSIONS_KEY = `@fixra_sessions_${user?.id || 'guest'}`;
 
-  const t = getTranslation(chatLanguage);
-  const greetingText = t.greeting(user?.firstName || '');
-
-  const groupedSessions = sessions.reduce((acc, session) => {
-    const cat = session.category || 'General';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(session);
-    return acc;
-  }, {} as Record<string, ChatSession[]>);
-
-  const toggleFolder = (category: string) => {
-    Haptics.selectionAsync(); 
-    setExpandedFolders(prev => 
-      prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]
-    );
-  };
+  useEffect(() => {
+    const syncBookmarks = async () => {
+      if (user?.id) {
+        try {
+          const token = await getToken({ template: 'supabase' });
+          if (token) {
+            const bookmarks = await getUserBookmarks(token, user.id);
+            if (bookmarks) {
+              const ids = bookmarks.map((b: any) => b.message_data?.originalId).filter(Boolean);
+              const texts = bookmarks.map((b: any) => b.message_data?.text).filter(Boolean);
+              setBookmarkedMessageIds(ids);
+              setBookmarkedTexts(texts);
+            }
+          }
+        } catch (e) {}
+      }
+    };
+    syncBookmarks();
+  }, [user?.id]);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
-
     const checkFlow = async () => {
       if (user?.id && !hasCheckedTutorial) {
         try {
@@ -87,226 +117,51 @@ export default function ChatScreen() {
               if (intervalId) clearInterval(intervalId);
             }
           }
-        } catch (e) {
-          console.error('Error checking flow status', e);
-        }
+        } catch (e) {}
       }
     };
-
     checkFlow();
     intervalId = setInterval(checkFlow, 1500);
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
+    return () => { if (intervalId) clearInterval(intervalId); };
   }, [user, hasCheckedTutorial]);
-
-  useEffect(() => {
-    if (messages.length === 1 && messages[0].sender === 'bot' && messages[0].text !== greetingText) {
-      const updatedMessages = [{ ...messages[0], text: greetingText }];
-      setMessages(updatedMessages);
-      if (currentSessionId && sessions.some(s => s.id === currentSessionId)) {
-        setSessions(prev => {
-          const updated = prev.map(s => s.id === currentSessionId ? { ...s, messages: updatedMessages } : s);
-          AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updated)).catch(()=>{});
-          return updated;
-        });
-      }
-    }
-  }, [greetingText, messages, currentSessionId, sessions]);
-
-  useEffect(() => { 
-    if (user) loadSessions(); 
-  }, [user]);
-
-  const loadSessions = async () => {
-    try {
-      let loadedFromServer = false;
-      let loadedSessions: ChatSession[] = [];
-
-      if (user?.id) {
-        const token = await getToken({ template: 'supabase' });
-        if (token) {
-          const serverSessions = await getUserChatSessions(token, user.id);
-          if (serverSessions && serverSessions.length > 0) {
-            loadedSessions = serverSessions.map(s => ({
-              id: s.id,
-              title: s.title,
-              category: s.category || 'General',
-              messages: s.messages,
-              updatedAt: s.updated_at
-            }));
-            loadedFromServer = true;
-          }
-        }
-      }
-
-      if (!loadedFromServer) {
-        const saved = await AsyncStorage.getItem(SESSIONS_KEY);
-        if (saved) {
-          loadedSessions = JSON.parse(saved).map((s: ChatSession) => ({ ...s, category: s.category || 'General' }));
-        }
-      }
-
-      setSessions(loadedSessions);
-      if (loadedSessions.length > 0) {
-        await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(loadedSessions));
-      }
-      
-      createNewSession();
-
-    } catch (e) { 
-      console.error('Load sessions error', e); 
-      createNewSession(); 
-    }
-  };
-
-  const saveSessionsToStorage = async (updatedSessions: ChatSession[]) => {
-    try {
-      setSessions(updatedSessions);
-      await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updatedSessions));
-    } catch (e) { console.error('Save sessions error', e); }
-  };
-
-  const createNewSession = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newId = Date.now().toString();
-    const initialMessage: MessageType = { id: '1', text: greetingText, sender: 'bot' };
-    
-    setCurrentSessionId(newId);
-    setMessages([initialMessage]);
-    
-    if (!expandedFolders.includes('General')) {
-        setExpandedFolders(prev => [...prev, 'General']);
-    }
-    if (isMenuOpen) toggleMenu();
-  };
-
-  const switchSession = (sessionId: string) => {
-    Haptics.selectionAsync();
-    const session = sessions.find(s => s.id === sessionId);
-    if (session) {
-      setCurrentSessionId(session.id);
-      setMessages(session.messages);
-      toggleMenu();
-    }
-  };
-
-  const deleteSession = (sessionId: string) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert(t.deleteAlert, t.deleteConfirm, [
-      { text: t.cancel, style: 'cancel' },
-      { text: t.delete, style: 'destructive', onPress: () => {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          const updatedSessions = sessions.filter(s => s.id !== sessionId);
-          saveSessionsToStorage(updatedSessions);
-          
-          if (currentSessionId === sessionId) {
-            createNewSession();
-          }
-        }
-      }
-    ]);
-  };
-
-  const updateCurrentSession = (newMessages: MessageType[], newCategory?: string) => {
-    setMessages(newMessages);
-    if (!currentSessionId) return;
-
-    let updatedSessions = [...sessions];
-    let sessionIndex = updatedSessions.findIndex(s => s.id === currentSessionId);
-
-    let newTitle = t.newChatName;
-    let finalCategory = 'General';
-
-    const userMessages = newMessages.filter(m => m.sender === 'user');
-
-    if (sessionIndex >= 0) {
-      const s = updatedSessions[sessionIndex];
-      newTitle = s.title;
-      finalCategory = s.category;
-
-      if (userMessages.length === 1 && (s.title === t.newChatName || s.title.startsWith('Chat from') || s.title.startsWith('שיחה מ-'))) {
-        const firstUserMsg = userMessages[0];
-        if (firstUserMsg.text) {
-          const words = firstUserMsg.text.trim().split(/\s+/);
-          newTitle = words.slice(0, 4).join(' ') + (words.length > 4 ? '...' : '');
-        } else if (firstUserMsg.mediaType === 'image') {
-          newTitle = '📷 Image Search';
-        } else if (firstUserMsg.mediaType === 'video') {
-          newTitle = '🎥 Video Search';
-        }
-      }
-
-      if (newCategory && newCategory !== 'Unknown' && newCategory !== 'General') {
-        if (finalCategory === 'General' || !finalCategory) {
-          finalCategory = newCategory;
-        }
-      }
-    } else {
-      if (userMessages.length > 0) {
-        const firstUserMsg = userMessages[0];
-        if (firstUserMsg.text) {
-          const words = firstUserMsg.text.trim().split(/\s+/);
-          newTitle = words.slice(0, 4).join(' ') + (words.length > 4 ? '...' : '');
-        } else if (firstUserMsg.mediaType === 'image') {
-          newTitle = '📷 Image Search';
-        } else if (firstUserMsg.mediaType === 'video') {
-          newTitle = '🎥 Video Search';
-        }
-      }
-      
-      if (newCategory && newCategory !== 'Unknown') {
-        finalCategory = newCategory;
-      }
-    }
-
-    const updatedSession = {
-      id: currentSessionId,
-      title: newTitle,
-      category: finalCategory,
-      messages: newMessages,
-      updatedAt: Date.now()
-    };
-
-    if (sessionIndex >= 0) {
-      updatedSessions[sessionIndex] = updatedSession;
-    } else {
-      if (userMessages.length > 0) {
-        updatedSessions.unshift(updatedSession);
-      } else {
-        return; 
-      }
-    }
-
-    updatedSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-    saveSessionsToStorage(updatedSessions);
-
-    if (finalCategory && !expandedFolders.includes(finalCategory)) {
-        setExpandedFolders(prev => [...prev, finalCategory]);
-    }
-
-    if (user?.id && userMessages.length > 0) {
-      getToken({ template: 'supabase' }).then(token => {
-        if (token) {
-          saveChatSession(token, updatedSession.id, user.id, updatedSession.title, updatedSession.messages, updatedSession.category);
-        }
-      });
-    }
-  };
 
   const handleCloseTutorial = async (): Promise<void> => {
     setIsTutorialVisible(false);
     if (user?.id) {
       try {
         const token = await getToken({ template: 'supabase' });
-        if (token) {
-          await markTutorialAsSeen(token, user.id);
-        }
-      } catch(e) {
-         console.error('Error marking tutorial as seen', e);
-      }
+        if (token) await markTutorialAsSeen(token, user.id);
+      } catch(e) {}
     }
+  };
+
+  const handleBookmarkMessage = async (msg: MessageType) => {
+    if (!user?.id) return;
+    const isAlreadySaved = bookmarkedMessageIds.includes(msg.id) || (msg.text && bookmarkedTexts.includes(msg.text));
+    if (isAlreadySaved) {
+      Alert.alert("Already Saved", "This solution is already in your favorites.");
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      if (!token) return;
+
+      const currentSession = Object.values(chatManager.groupedSessions).flat().find(s => s.id === chatManager.currentSessionId);
+      const bookmarkTitle = currentSession ? currentSession.title : 'Saved Solution';
+
+      const messageDataToSave = { originalId: msg.id, text: msg.text, walkthroughData: msg.walkthroughData };
+      const success = await saveBookmark(token, user.id, bookmarkTitle, messageDataToSave);
+      
+      if (success) {
+        setBookmarkedMessageIds(prev => [...prev, msg.id]);
+        if (msg.text) setBookmarkedTexts(prev => [...prev, msg.text!]); 
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Error", "Could not save to favorites.");
+      }
+    } catch (e) {}
   };
 
   const toggleMenu = () => {
@@ -324,7 +179,6 @@ export default function ChatScreen() {
       const framesToExtract = 5; 
       const base64Frames: string[] = [];
       let firstThumbnailUri = '';
-
       const safeDuration = (duration && duration > 0) ? duration : 5000; 
       const step = Math.floor(safeDuration / framesToExtract);
 
@@ -335,15 +189,11 @@ export default function ChatScreen() {
           const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
           base64Frames.push(base64);
           if (i === 0) firstThumbnailUri = uri; 
-        } catch (frameError) {
-          console.warn(`Failed to extract frame at ${time}ms`, frameError);
-        }
+        } catch (e) {}
       }
-      
       if (base64Frames.length === 0) return null;
       return { thumbnailUri: firstThumbnailUri, base64Array: base64Frames };
     } catch (e) {
-      console.warn("Video processing error:", e);
       return null;
     }
   };
@@ -351,23 +201,13 @@ export default function ChatScreen() {
   const openCamera = async () => {
     setIsAttachMenuVisible(false);
     const p = await ImagePicker.requestCameraPermissionsAsync();
-    if(!p.granted) {
-      Alert.alert("Permission needed", "Please allow camera access.");
-      return;
-    }
-    let r = await ImagePicker.launchCameraAsync({ 
-      mediaTypes: ['images', 'videos'], 
-      allowsEditing: true, 
-      quality: 0.5, 
-      base64: true 
-    });
+    if(!p.granted) { Alert.alert("Permission needed", "Please allow camera access."); return; }
+    let r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images', 'videos'], allowsEditing: true, quality: 0.5, base64: true });
     if(!r.canceled) {
       const asset = r.assets[0];
       if (asset.type === 'video') {
         const videoData = await processVideoFrames(asset.uri, asset.duration);
-        if (videoData) {
-          setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
-        }
+        if (videoData) setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
       } else {
         setSelectedMedia({ uri: asset.uri, type: 'image', base64: asset.base64 || undefined });
       }
@@ -376,21 +216,12 @@ export default function ChatScreen() {
 
   const openGallery = async () => {
     setIsAttachMenuVisible(false);
-    let r = await ImagePicker.launchImageLibraryAsync({ 
-      mediaTypes: ['images', 'videos'], 
-      allowsEditing: true, 
-      quality: 0.5, 
-      base64: true 
-    });
+    let r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], allowsEditing: true, quality: 0.5, base64: true });
     if(!r.canceled) {
       const asset = r.assets[0];
       if (asset.type === 'video') {
         const videoData = await processVideoFrames(asset.uri, asset.duration);
-        if (videoData) {
-          setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
-        } else {
-          Alert.alert("Error", "Could not process this video.");
-        }
+        if (videoData) setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
       } else {
         setSelectedMedia({ uri: asset.uri, type: 'image', base64: asset.base64 || undefined });
       }
@@ -402,7 +233,7 @@ export default function ChatScreen() {
     Keyboard.dismiss();
   };
 
-  const sendMessage = async () => {
+  const handleSendMessage = async () => {
     if (inputText.trim() === '' && !selectedMedia) return;
     
     if (hasReachedLimit) { 
@@ -415,31 +246,14 @@ export default function ChatScreen() {
 
     const userText = inputText.trim();
     const currentMedia = selectedMedia;
-    const newUserMsg: MessageType = { 
-      id: Date.now().toString(), 
-      text: userText !== '' ? userText : undefined, 
-      media: currentMedia?.type === 'video' ? currentMedia.thumbnailUri : currentMedia?.uri, 
-      mediaType: currentMedia?.type, 
-      sender: 'user' 
-    };
-    
-    let updatedMsgs = [...messages, newUserMsg];
-    updateCurrentSession(updatedMsgs);
     
     setInputText('');
     setSelectedMedia(null);
     setIsAttachMenuVisible(false);
 
-    const loadingId = (Date.now() + 1).toString();
-    updatedMsgs = [...updatedMsgs, { id: loadingId, sender: 'bot', isLoading: true }];
-    updateCurrentSession(updatedMsgs);
+    const success = await chatManager.sendMessage(userText, currentMedia);
 
-    const response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, messages, currentPlan);
-    
-    updatedMsgs = updatedMsgs.map(msg => msg.id === loadingId ? { id: loadingId, text: response.message, walkthroughData: response.walkthroughData, sender: 'bot' } : msg);
-    updateCurrentSession(updatedMsgs, response.category);
-
-    if (!response.isError) {
+    if (success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); 
       incrementMessageCount();
     } else {
@@ -447,176 +261,27 @@ export default function ChatScreen() {
     }
   };
 
-  const handleRating = (messageId: string, rating: 'up' | 'down') => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const updatedMsgs = messages.map(msg => 
-      msg.id === messageId ? { ...msg, rating: msg.rating === rating ? undefined : rating } : msg
-    );
-    updateCurrentSession(updatedMsgs);
-  };
-
-  const renderBubbleContent = (msg: MessageType) => (
-    <>
-      {msg.media && (
-        <View style={styles.messageMediaWrapper}>
-          <Image source={{ uri: msg.media }} style={styles.messageImage} />
-          {msg.mediaType === 'video' && (
-            <View style={styles.playIconOverlayMessage}>
-              <Ionicons name="play-circle" size={40} color="rgba(255,255,255,0.8)" />
-            </View>
-          )}
-        </View>
-      )}
-      
-      {msg.isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator color="#00e5ff" />
-          <Text style={styles.loadingText}>{t.loading}</Text> 
-        </View>
-      ) : (
-        <>
-          {msg.text && <Text style={styles.messageText}>{msg.text}</Text>}
-          
-          {msg.walkthroughData && (
-            <View style={styles.solutionsWrapper}>
-              <Text style={styles.solutionsHeader}>Solutions:</Text>
-              
-              {msg.walkthroughData.youtube && (
-                <TouchableOpacity style={[styles.stableCard, {height: 135}]} onPress={() => Linking.openURL(`https://www.youtube.com/watch?v=${msg.walkthroughData!.youtube!.videoId}`)}>
-                  <View style={styles.stableRow}>
-                    <Image source={{ uri: msg.walkthroughData.youtube.thumbnail }} style={styles.stableLeftIcon} />
-                    <View style={styles.stableTextContainer}>
-                      <Text style={styles.solutionTitle} numberOfLines={3}>{msg.walkthroughData.youtube.title}</Text>
-                      <Text style={[styles.solutionSubtitle, {color: '#ff0000'}]}>📺 YouTube</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )}
-
-              {msg.walkthroughData.wiki && (
-                <TouchableOpacity style={[styles.stableCard, {height: 135}]} onPress={() => Linking.openURL(msg.walkthroughData!.wiki!.url)}>
-                  <View style={styles.stableRow}>
-                    <Image source={{ uri: msg.walkthroughData.wiki.thumbnail }} style={styles.stableLeftIcon} />
-                    <View style={styles.stableTextContainer}>
-                      <Text style={styles.solutionTitle} numberOfLines={3}>{msg.walkthroughData.wiki.title}</Text>
-                      <Text style={[styles.solutionSubtitle, {color: '#00e5ff'}]}>📚 Fandom Wiki</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )}
-
-              {msg.walkthroughData.ign && (
-                <TouchableOpacity style={[styles.stableCard, {height: 135}]} onPress={() => Linking.openURL(msg.walkthroughData!.ign!.url)}>
-                  <View style={styles.stableRow}>
-                    <Image source={{ uri: msg.walkthroughData.ign.thumbnail }} style={styles.stableLeftIcon} />
-                    <View style={styles.stableTextContainer}>
-                      <Text style={styles.solutionTitle} numberOfLines={3}>{msg.walkthroughData.ign.title}</Text>
-                      <Text style={[styles.solutionSubtitle, {color: '#bf1313'}]}>🕹️ IGN Guide</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )}
-
-              {msg.walkthroughData.polygon && (
-                <TouchableOpacity style={[styles.stableCard, {height: 135}]} onPress={() => Linking.openURL(msg.walkthroughData!.polygon!.url)}>
-                  <View style={styles.stableRow}>
-                    <Image source={{ uri: msg.walkthroughData.polygon.thumbnail }} style={styles.stableLeftIcon} />
-                    <View style={styles.stableTextContainer}>
-                      <Text style={styles.solutionTitle} numberOfLines={3}>{msg.walkthroughData.polygon.title}</Text>
-                      <Text style={[styles.solutionSubtitle, {color: '#a032a8'}]}>🟣 Polygon Guide</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )}
-
-              {msg.walkthroughData.mapgenie && (
-                <TouchableOpacity style={[styles.stableCard, {height: 135}]} onPress={() => Linking.openURL(msg.walkthroughData!.mapgenie!.url)}>
-                  <View style={styles.stableRow}>
-                    <Image source={{ uri: msg.walkthroughData.mapgenie.thumbnail }} style={styles.stableLeftIcon} />
-                    <View style={styles.stableTextContainer}>
-                      <Text style={styles.solutionTitle} numberOfLines={3}>{msg.walkthroughData.mapgenie.title}</Text>
-                      <Text style={[styles.solutionSubtitle, {color: '#32a852'}]}>🗺️ MapGenie Location</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )}
-
-              {msg.walkthroughData.fextralife && (
-                <TouchableOpacity style={[styles.stableCard, {height: 135}]} onPress={() => Linking.openURL(msg.walkthroughData!.fextralife!.url)}>
-                  <View style={styles.stableRow}>
-                    <Image source={{ uri: msg.walkthroughData.fextralife.thumbnail }} style={styles.stableLeftIcon} />
-                    <View style={styles.stableTextContainer}>
-                      <Text style={styles.solutionTitle} numberOfLines={3}>{msg.walkthroughData.fextralife.title}</Text>
-                      <Text style={[styles.solutionSubtitle, {color: '#d4af37'}]}>⚔️ Fextralife Guide</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )}
-
-            </View>
-          )}
-        </>
-      )}
-    </>
-  );
-
   return (
     <LinearGradient colors={['#050012', '#0a0026', '#000000']} style={styles.background}>
       <SafeAreaView style={styles.container}>
         {isMenuOpen && <TouchableOpacity style={styles.overlay} onPress={toggleMenu} activeOpacity={1} />}
         
-        <Animated.View style={[styles.sideMenu, { transform: [{ translateX: slideAnim }] }]}>
-          <View style={styles.menuContent}>
-            
-            <TouchableOpacity activeOpacity={0.8} onPress={createNewSession}>
-              <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.newChatBtn}>
-                <Text style={styles.newChatBtnText}>{t.newChat}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <View style={styles.menuTopActions}>
-              <TouchableOpacity style={styles.menuActionItem} onPress={() => { toggleMenu(); setIsTutorialVisible(true); }}>
-                <View style={[styles.menuActionCircle, { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
-                  <Ionicons name="book-outline" size={26} color="#ffffff" />
-                </View>
-                <Text style={styles.menuActionText}>Tutorial</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.menuActionItem} onPress={() => { toggleMenu(); setIsPaywallVisible(true); }}>
-                <View style={[styles.menuActionCircle, { backgroundColor: 'rgba(138, 43, 226, 0.15)' }]}>
-                  <Image 
-                    source={require('../../assets/icon.png')} 
-                    style={{ width: 28, height: 28, resizeMode: 'contain' }} 
-                  />
-                </View>
-                <Text style={[styles.menuActionText, { color: '#b19cd9' }]}>Upgrade</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.menuSectionTitle}>{t.historyTitle}</Text>
-            
-            <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
-              {Object.entries(groupedSessions).map(([category, catSessions]) => (
-                <View key={category} style={styles.folderContainer}>
-                  <TouchableOpacity style={styles.folderHeader} onPress={() => toggleFolder(category)}>
-                    <Text style={styles.folderHeaderText}>📁 {category}</Text>
-                    <Text style={styles.folderIcon}>{expandedFolders.includes(category) ? '▼' : '▶'}</Text>
-                  </TouchableOpacity>
-                  {expandedFolders.includes(category) && catSessions.map(session => (
-                    <View key={session.id} style={[styles.historyItemWrapper, currentSessionId === session.id && styles.activeHistoryItem]}>
-                      <TouchableOpacity style={styles.historyItemBtn} onPress={() => switchSession(session.id)}>
-                        <Text style={[styles.historyItemText, currentSessionId === session.id && {color: '#00e5ff', fontWeight: 'bold'}]} numberOfLines={1}>{session.title}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteSession(session.id)}>
-                        <Text style={styles.deleteBtnText}>🗑️</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        </Animated.View>
+        <ChatSideMenu 
+          slideAnim={slideAnim}
+          onNewChat={() => chatManager.createNewSession(toggleMenu)}
+          onOpenTutorial={() => { toggleMenu(); setIsTutorialVisible(true); }}
+          onOpenFavorites={() => { toggleMenu(); setIsFavoritesVisible(true); }}
+          onOpenCommunity={() => { toggleMenu(); setIsCommunityVisible(true); }}
+          onOpenPaywall={() => { toggleMenu(); setIsPaywallVisible(true); }}
+          groupedSessions={chatManager.groupedSessions}
+          expandedFolders={chatManager.expandedFolders}
+          onToggleFolder={chatManager.toggleFolder}
+          currentSessionId={chatManager.currentSessionId}
+          onSwitchSession={(id) => chatManager.switchSession(id, toggleMenu)}
+          onDeleteSession={chatManager.deleteSession}
+          newChatText={t.newChat}
+          historyTitleText={t.historyTitle}
+        />
 
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -637,7 +302,6 @@ export default function ChatScreen() {
         <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={{ flex: 1 }}>
             
-            {/* הנה ה-ScrollView המעודכן שלנו שגולל אוטומטית למטה! */}
             <ScrollView 
               ref={scrollViewRef}
               style={styles.chatArea} 
@@ -647,38 +311,20 @@ export default function ChatScreen() {
               onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
               onLayout={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
             >
-              {messages.map((msg) => (
-                <View key={msg.id} style={[styles.messageBubbleWrapper, msg.sender === 'user' ? styles.userBubbleWrapper : styles.botBubbleWrapper]}>
-                  
-                  {msg.sender === 'user' ? (
-                    <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 1}} style={[styles.messageBubble, styles.userBubble]}>
-                      {renderBubbleContent(msg)}
-                    </LinearGradient>
-                  ) : (
-                    <View style={[styles.messageBubble, styles.botBubble]}>
-                      {renderBubbleContent(msg)}
-                    </View>
-                  )}
-                  
-                  {msg.sender === 'bot' && !msg.isLoading && (
-                    <View style={styles.ratingContainer}>
-                      <TouchableOpacity 
-                        onPress={() => handleRating(msg.id, 'up')} 
-                        style={[styles.ratingBtn, msg.rating === 'up' && styles.ratingBtnActiveUp]}
-                      >
-                        <Ionicons name={msg.rating === 'up' ? "thumbs-up" : "thumbs-up-outline"} size={16} color={msg.rating === 'up' ? "#00e5ff" : "#888"} />
-                      </TouchableOpacity>
-                      
-                      <TouchableOpacity 
-                        onPress={() => handleRating(msg.id, 'down')} 
-                        style={[styles.ratingBtn, msg.rating === 'down' && styles.ratingBtnActiveDown]}
-                      >
-                        <Ionicons name={msg.rating === 'down' ? "thumbs-down" : "thumbs-down-outline"} size={16} color={msg.rating === 'down' ? "#ff00cc" : "#888"} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              ))}
+              {chatManager.messages.map((msg) => {
+                const isBookmarked = bookmarkedMessageIds.includes(msg.id) || (!!msg.text && bookmarkedTexts.includes(msg.text));
+                
+                return (
+                  <AnimatedMessageItem key={msg.id} isUser={msg.sender === 'user'}>
+                    <MessageBubble 
+                      msg={msg} 
+                      isBookmarked={isBookmarked} 
+                      onRate={chatManager.handleRating} 
+                      onBookmark={handleBookmarkMessage} 
+                    />
+                  </AnimatedMessageItem>
+                );
+              })}
             </ScrollView>
 
             {hasReachedLimit ? (
@@ -691,64 +337,30 @@ export default function ChatScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={styles.inputWrapper}>
-                
-                {isAttachMenuVisible && (
-                  <View style={styles.floatingAttachMenu}>
-                    <TouchableOpacity style={styles.attachMenuItem} onPress={openCamera}>
-                      <Ionicons name="camera-outline" size={24} color="#00e5ff" style={styles.attachMenuIcon} />
-                      <Text style={styles.attachMenuText}>{t.camera}</Text>
-                    </TouchableOpacity>
-                    <View style={styles.attachMenuDivider} />
-                    <TouchableOpacity style={styles.attachMenuItem} onPress={openGallery}>
-                      <Ionicons name="image-outline" size={24} color="#00e5ff" style={styles.attachMenuIcon} />
-                      <Text style={styles.attachMenuText}>{t.gallery}</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                <View style={styles.inputUnifiedField}>
-                  <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsAttachMenuVisible(!isAttachMenuVisible); }} style={styles.attachButton}>
-                    <Text style={styles.attachButtonText}>+</Text>
-                  </TouchableOpacity>
-                  <View style={styles.inputContentContainer}>
-                    {selectedMedia && (
-                      <View style={styles.fieldPreviewContainer}>
-                        <Image source={{ uri: selectedMedia.type === 'video' ? selectedMedia.thumbnailUri : selectedMedia.uri }} style={styles.fieldPreviewImage} />
-                        {selectedMedia.type === 'video' && (
-                          <View style={styles.playIconOverlayInput}>
-                            <Ionicons name="play-circle" size={28} color="rgba(255,255,255,0.9)" />
-                          </View>
-                        )}
-                        <TouchableOpacity style={styles.removeMediaBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMedia(null); }}>
-                          <Ionicons name="close" size={16} color="white" />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                    <TextInput 
-                      style={[styles.input, selectedMedia ? { paddingTop: PREVIEW_HEIGHT + 10 } : null]} 
-                      placeholder={selectedMedia ? "Add game name for perfect answer..." : t.placeholder} 
-                      placeholderTextColor="#aaaaaa" 
-                      value={inputText} 
-                      onChangeText={setInputText} 
-                      onFocus={() => setIsAttachMenuVisible(false)}
-                      multiline 
-                    />
-                  </View>
-                  <TouchableOpacity testID="send-button" onPress={sendMessage} style={styles.sendButton}>
-                    <Ionicons name="send" size={22} color="#00e5ff" style={{ paddingBottom: Platform.OS === 'ios' ? 12 : 14 }} />
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.disclaimerText}>{t.disclaimer}</Text>
-
-              </View>
+              <ChatInputArea 
+                inputText={inputText}
+                setInputText={setInputText}
+                selectedMedia={selectedMedia}
+                setSelectedMedia={setSelectedMedia}
+                isAttachMenuVisible={isAttachMenuVisible}
+                setIsAttachMenuVisible={setIsAttachMenuVisible}
+                onSendMessage={handleSendMessage}
+                onOpenCamera={openCamera}
+                onOpenGallery={openGallery}
+                placeholder={t.placeholder}
+                cameraText={t.camera}
+                galleryText={t.gallery}
+                disclaimerText={t.disclaimer}
+              />
             )}
           </View>
         </KeyboardAvoidingView>
 
         <PaywallModal visible={isPaywallVisible} onClose={() => setIsPaywallVisible(false)} />
         <ProfileModal visible={isProfileVisible} onClose={() => setIsProfileVisible(false)} onOpenPaywall={() => setIsPaywallVisible(true)} />
+        <SettingsScreen visible={isSettingsVisible} onClose={() => setIsSettingsVisible(false)} />
+        <FavoritesScreen visible={isFavoritesVisible} onClose={() => setIsFavoritesVisible(false)} />
+        <CommunityModal visible={isCommunityVisible} onClose={() => setIsCommunityVisible(false)} />
         <TutorialModal visible={isTutorialVisible} onClose={() => { handleCloseTutorial(); }} />
         <TermsModal />
         
@@ -761,31 +373,6 @@ const styles = StyleSheet.create({
   background: { flex: 1 },
   container: { flex: 1 },
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 50 },
-  
-  sideMenu: { position: 'absolute', top: 0, bottom: 0, width: screenWidth * 0.75, backgroundColor: 'rgba(10, 0, 38, 0.95)', zIndex: 100, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)', padding: 20 },
-  menuContent: { marginTop: 60, flex: 1 },
-  
-  newChatBtn: { padding: 15, borderRadius: 15, alignItems: 'center', marginBottom: 20 },
-  newChatBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
-
-  menuTopActions: { flexDirection: 'row', justifyContent: 'flex-start', gap: 20, marginBottom: 25, paddingHorizontal: 5 },
-  menuActionItem: { alignItems: 'center' },
-  menuActionCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  menuActionText: { color: '#aaaaaa', fontSize: 12, fontWeight: '600' },
-
-  menuSectionTitle: { color: '#00e5ff', fontSize: 13, fontWeight: 'bold', marginBottom: 15, textAlign: 'left', letterSpacing: 1 },
-  historyList: { flex: 1, marginBottom: 20 },
-  folderContainer: { marginBottom: 10 },
-  folderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', padding: 15, borderRadius: 12, marginBottom: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  folderHeaderText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
-  folderIcon: { color: '#00e5ff', fontSize: 14 },
-  historyItemWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)', paddingVertical: 8, paddingLeft: 10 },
-  activeHistoryItem: { backgroundColor: 'rgba(0, 229, 255, 0.1)', borderRadius: 10, paddingHorizontal: 10, borderBottomWidth: 0 },
-  historyItemBtn: { flex: 1, paddingVertical: 10 },
-  historyItemText: { color: '#cccccc', fontSize: 15, textAlign: 'left' },
-  deleteBtn: { padding: 10, opacity: 0.6 },
-  deleteBtnText: { fontSize: 14 },
-  
   header: { padding: 15, backgroundColor: 'transparent', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)', zIndex: 10 },
   headerLeft: { flex: 1, alignItems: 'flex-start' },
   avatarWrapper: { borderWidth: 2, borderColor: '#8a2be2', borderRadius: 20, overflow: 'hidden' },
@@ -793,90 +380,13 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '900', color: '#ffffff', flex: 1, textAlign: 'center', letterSpacing: 2, textShadowColor: '#00e5ff', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 10 },
   headerRight: { flex: 1, alignItems: 'flex-end' },
   hamburgerBtn: { padding: 5 },
-  hamburgerText: { fontSize: 28, color: '#ffffff' },
   keyboardView: { flex: 1 },
   chatArea: { flex: 1 },
-  
   messageBubbleWrapper: { maxWidth: '85%', marginBottom: 15 },
   userBubbleWrapper: { alignSelf: 'flex-end' },
   botBubbleWrapper: { alignSelf: 'flex-start' },
-  messageBubble: { padding: 15, borderRadius: 20 },
-  userBubble: { borderBottomRightRadius: 5 },
-  botBubble: { backgroundColor: 'rgba(255,255,255,0.05)', borderBottomLeftRadius: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  
-  messageText: { color: '#ffffff', fontSize: 16, marginTop: 5, textAlign: 'left', lineHeight: 22 },
-  messageImage: { width: 220, height: 160, borderRadius: 10, resizeMode: 'cover' },
-  messageMediaWrapper: { width: 220, height: 160, borderRadius: 10, overflow: 'hidden', position: 'relative', marginBottom: 10 },
-  playIconOverlayMessage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
-  loadingContainer: { flexDirection: 'row', alignItems: 'center', padding: 5 },
-  loadingText: { color: '#00e5ff', marginLeft: 10, fontSize: 14, flex: 1, fontWeight: '600' },
-  solutionsWrapper: { marginTop: 15 },
-  solutionsHeader: { color: '#aaaaaa', fontSize: 14, fontWeight: 'bold', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 },
-  stableCard: { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 15, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  stableRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  stableLeftIcon: { width: 100, height: '100%', resizeMode: 'cover' },
-  stableTextContainer: { flex: 1, paddingHorizontal: 15, justifyContent: 'center' },
-  solutionTitle: { color: '#ffffff', fontSize: 15, fontWeight: 'bold', marginBottom: 6, lineHeight: 20 },
-  solutionSubtitle: { fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
-  
-  inputWrapper: { padding: 10, backgroundColor: 'transparent', position: 'relative' },
-  inputUnifiedField: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 25, paddingHorizontal: 15, paddingVertical: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', zIndex: 1 },
-  inputContentContainer: { flex: 1, position: 'relative', marginHorizontal: 10 },
-  attachButton: { paddingBottom: Platform.OS === 'ios' ? 7 : 10 },
-  attachButtonText: { color: '#aaaaaa', fontSize: 30, fontWeight: '300' },
-  sendButton: { paddingBottom: 0 },
-  input: { color: '#ffffff', fontSize: 16, maxHeight: 180, textAlign: 'left', paddingTop: Platform.OS === 'ios' ? 15 : 12, paddingBottom: Platform.OS === 'ios' ? 15 : 12 },
-  fieldPreviewContainer: { position: 'absolute', top: 10, right: 0, zIndex: 10, backgroundColor: '#1e1e1e', borderRadius: 10, padding: 2 },
-  fieldPreviewImage: { width: 80, height: PREVIEW_HEIGHT, borderRadius: 10, borderWidth: 1, borderColor: '#333' },
-  playIconOverlayInput: { position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 8 },
-  removeMediaBtn: { backgroundColor: '#ff00cc', width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', position: 'absolute', left: -10, top: -10, zIndex: 11 },
-  
   paywallBlockedField: { padding: 20, backgroundColor: 'rgba(10, 0, 38, 0.9)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: Platform.OS === 'ios' ? 20 : 0 },
   paywallText: { color: '#aaaaaa', fontSize: 16, marginBottom: 15, textAlign: 'center' },
   paywallButton: { paddingHorizontal: 25, paddingVertical: 15, borderRadius: 30, width: '100%', alignItems: 'center' },
-  paywallButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
-  
-  floatingAttachMenu: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 70 : 65,
-    left: 15,
-    backgroundColor: 'rgba(10, 0, 38, 0.95)',
-    borderRadius: 20,
-    padding: 10,
-    width: 160,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: '#00e5ff',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
-    zIndex: 100,
-  },
-  attachMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-  },
-  attachMenuIcon: {
-    marginRight: 12,
-  },
-  attachMenuText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  attachMenuDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginHorizontal: 10,
-  },
-
-  ratingContainer: { flexDirection: 'row', justifyContent: 'flex-start', marginTop: 8, gap: 10, marginLeft: 5 },
-  ratingBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
-  ratingBtnActiveUp: { backgroundColor: 'rgba(0, 229, 255, 0.15)', borderColor: '#00e5ff' },
-  ratingBtnActiveDown: { backgroundColor: 'rgba(255, 0, 204, 0.15)', borderColor: '#ff00cc' },
-
-  disclaimerText: { color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center', marginTop: 10, letterSpacing: 0.5 }
+  paywallButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 }
 });

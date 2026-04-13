@@ -206,3 +206,165 @@ export const createReferralCode = async (clerkToken: string, userId: string, cus
   
   return { success: true };
 };
+
+// ==========================================
+// פונקציות הגדרות משתמש (Settings)
+// ==========================================
+
+// מעדכנת את שפת הממשק הנבחרת של המשתמש בשרת
+export const updateUserLanguage = async (clerkToken: string, userId: string, languageId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({ 
+      user_id: userId, 
+      chat_language: languageId,
+      updated_at: Date.now()
+    });
+
+  if (error) {
+    console.error('Error updating language:', error.message);
+    return false;
+  }
+  return true;
+};
+
+
+// ==========================================
+// פונקציות מועדפים (Bookmarks)
+// ==========================================
+
+// שמירת הודעה (פתרון) למועדפים
+export const saveBookmark = async (clerkToken: string, userId: string, title: string, messageData: any) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { error } = await supabase
+    .from('bookmarks')
+    .insert({
+      user_id: userId,
+      title: title,
+      message_data: messageData // אנחנו שומרים את כל אובייקט ההודעה (JSON) כמו שהוא!
+    });
+
+  if (error) {
+    console.error('Error saving bookmark:', error.message);
+    return false;
+  }
+  return true;
+};
+
+// משיכת כל המועדפים של המשתמש (הכי חדשים למעלה)
+export const getUserBookmarks = async (clerkToken: string, userId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { data, error } = await supabase
+    .from('bookmarks')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching bookmarks:', error.message);
+    return [];
+  }
+  return data;
+};
+
+// מחיקת מועדף
+export const deleteBookmark = async (clerkToken: string, bookmarkId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { error } = await supabase
+    .from('bookmarks')
+    .delete()
+    .eq('id', bookmarkId);
+
+  if (error) {
+    console.error('Error deleting bookmark:', error.message);
+    return false;
+  }
+  return true;
+};
+// ==========================================
+// פונקציות הגדרות מתקדמות (Advanced Settings)
+// ==========================================
+
+// משיכת העדפת הרטט של המשתמש (ברירת מחדל: מופעל)
+export const getUserHapticsPreference = async (clerkToken: string, userId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('haptics_enabled')
+    .eq('user_id', userId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Error fetching haptics preference:', error.message);
+    return true; // נחזיר True כברירת מחדל במקרה של שגיאה
+  }
+  
+  // אם הערך לא קיים עדיין (null), נחזיר true
+  return data?.haptics_enabled ?? true; 
+};
+
+// עדכון העדפת הרטט בענן
+export const updateUserHapticsPreference = async (clerkToken: string, userId: string, enabled: boolean) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({ 
+      user_id: userId, 
+      haptics_enabled: enabled,
+      updated_at: Date.now()
+    });
+
+  if (error) {
+    console.error('Error updating haptics preference:', error.message);
+    return false;
+  }
+  return true;
+};
+// עדכון שם המשתמש (Gamer Tag / Full Name) בפרופיל
+export const updateUserName = async (clerkToken: string, userId: string, fullName: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({
+      user_id: userId,
+      full_name: fullName,
+      updated_at: Date.now()
+    });
+
+  if (error) {
+    console.error('Error updating user name:', error.message);
+    return false;
+  }
+  return true;
+};
+// מחיקת שיחת צ'אט מהשרת
+export const deleteChatSession = async (clerkToken: string, sessionId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { error } = await supabase
+    .from('sessions')
+    .delete()
+    .eq('id', sessionId);
+
+  if (error) {
+    console.error('Error deleting session from Supabase:', error.message);
+    return false;
+  }
+  
+  return true;
+};
+// מחיקת *כל* שיחות הצ'אט של המשתמש מהשרת
+export const deleteAllUserChatSessions = async (clerkToken: string, userId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  const { error } = await supabase
+    .from('sessions')
+    .delete()
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error deleting all sessions from Supabase:', error.message);
+    return false;
+  }
+  
+  return true;
+};

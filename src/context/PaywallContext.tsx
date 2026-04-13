@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { getUserSubscriptionData, updateSubscriptionData } from '../utils/db';
+import Purchases, { PurchasesPackage } from 'react-native-purchases'; // 🌟 ייבוא RevenueCat
 
 const DAILY_FREE_LIMIT = 3;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -18,8 +19,7 @@ type PaywallContextType = {
   purchasePackage: (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => Promise<void>;
   chatLanguage: string;
   changeLanguage: (lang: string) => Promise<void>;
-  mockPurchaseSuccess: (plan: string) => Promise<void>;
-  resetToFree: () => Promise<void>;
+  resetToFree: () => Promise<void>; // השארנו למקרה שתרצה לאפס בבדיקות
 };
 
 const PaywallContext = createContext<PaywallContextType | undefined>(undefined);
@@ -40,10 +40,13 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       if (savedLang) setChatLanguage(savedLang);
     });
     
-    if (user) loadUserData();
+    if (user) {
+      Purchases.logIn(user.id); // רושם את המשתמש ב-RevenueCat
+      loadUserData();
+    }
   }, [user]);
 
-  // טעינת נתונים ישירות מ-Supabase
+  // טעינת נתונים ישירות מ-Supabase (הלוגיקה המקורית והחכמה שלך!)
   const loadUserData = async () => {
     if (!user?.id) return;
     
@@ -66,10 +69,8 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         let updates: any = {};
         let needsUpdate = false;
 
-        // בודק אם זו חבילה חודשית שדורשת איפוס של 30 יום
         const isMonthlyPlan = plan === 'PREMIUM' || plan === 'PRO_monthly';
 
-        // איפוס חודשי לחבילות מינוי (מתעלם מחד-פעמי)
         if (now - lastReset >= THIRTY_DAYS_MS && isMonthlyPlan) {
           currentCount = 0;
           lastReset = now;
@@ -78,7 +79,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
           needsUpdate = true;
         }
 
-        // איפוס יומי ל-3 הודעות החינמיות
         if (now - lastDailyReset >= ONE_DAY_MS) {
           currentDailyCount = 0;
           lastDailyReset = now;
@@ -98,7 +98,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         setCurrentPlan(plan);
 
       } else {
-        // משתמש חדש לגמרי
         await updateSubscriptionData(token, user.id, {
           daily_message_count: 0,
           last_daily_reset: now,
@@ -119,7 +118,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     }
   };
 
-  // העלאת המונה וסנכרון מול השרת
   const incrementMessageCount = async () => {
     if (!user?.id) return;
     try {
@@ -137,7 +135,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       let updates: any = {};
       const isMonthlyPlan = currentPlan === 'PREMIUM' || currentPlan === 'PRO_monthly';
 
-      // מוודאים איפוסים במקרה שהמשתמש פתח לשלוח הודעה אחרי שעבר זמן
       if (now - lastDailyReset >= ONE_DAY_MS) {
         currentDailyCount = 0;
         lastDailyReset = now;
@@ -147,7 +144,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         lastReset = now;
       }
 
-      // קודם לוקחים מהיומי, אם נגמר - לוקחים מהחודשי/חד-פעמי
       if (currentDailyCount < DAILY_FREE_LIMIT) {
         currentDailyCount += 1;
         updates.daily_message_count = currentDailyCount;
@@ -165,54 +161,64 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     } catch (e) { console.error('Error saving message count to DB:', e); }
   };
 
-  // רכישת חבילה ועדכון השרת
+  // 🚀 הרכישה האמיתית שמשלבת את RevenueCat + Supabase
   const purchasePackage = async (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => {
     if (!user?.id) return;
     try {
-      const token = await getToken({ template: 'supabase' });
-      if (!token) return;
+      // 1. קודם כל, פונים ל-RevenueCat כדי לפתוח את חלונית התשלום
+      const offerings = await Purchases.getOfferings();
+      
+      if (offerings.current !== null) {
+        let selectedPackage: PurchasesPackage | null = null;
 
-      const now = Date.now();
-      let updates: any = {};
+        // ממפים את הבקשה שלך לחבילות שהגדרנו ב-RevenueCat
+        if (plan === 'PRO_monthly') selectedPackage = offerings.current.monthly;
+        if (plan === 'PRO_onetime') selectedPackage = offerings.current.annual; // נניח ששמנו את זה תחת annual
+        if (plan === 'PREMIUM') selectedPackage = offerings.current.lifetime;
 
-      if (plan === 'PREMIUM') {
-        setMaxMessages(1000); // תקרת הזכוכית הסודית שלנו
-        setMessageCount(0);
-        setIsPro(true);
-        updates = { 
-          is_pro: true, 
-          current_plan: 'PREMIUM',
-          max_messages: 1000,
-          message_count: 0,
-          last_reset: now
-        };
-      } else if (plan === 'PRO_monthly') {
-        setMaxMessages(50);
-        setMessageCount(0);
-        setIsPro(false); // הם לא פרימיום, הם פרו
-        updates = {
-          max_messages: 50,
-          message_count: 0,
-          last_reset: now,
-          current_plan: 'PRO_monthly',
-          is_pro: false
-        };
-      } else if (plan === 'PRO_onetime') {
-        setMaxMessages(50);
-        setMessageCount(0);
-        setIsPro(false);
-        updates = {
-          max_messages: 50,
-          message_count: 0,
-          last_reset: now,
-          current_plan: 'PRO_onetime',
-          is_pro: false
-        };
+        if (selectedPackage) {
+          // הקופאי: גובה את התשלום דרך אפל/גוגל
+          const { customerInfo } = await Purchases.purchasePackage(selectedPackage);
+          
+          // אם הקנייה עברה בהצלחה!
+          if (typeof customerInfo.entitlements.active['Fixra AI Pro'] !== "undefined") {
+            
+            // 2. עכשיו מעדכנים את Supabase שלנו כדי שידע כמה הודעות לתת
+            const token = await getToken({ template: 'supabase' });
+            if (!token) return;
+
+            const now = Date.now();
+            let updates: any = {};
+
+            if (plan === 'PREMIUM') {
+              setMaxMessages(1000);
+              setMessageCount(0);
+              setIsPro(true);
+              updates = { is_pro: true, current_plan: 'PREMIUM', max_messages: 1000, message_count: 0, last_reset: now };
+            } else if (plan === 'PRO_monthly') {
+              setMaxMessages(50);
+              setMessageCount(0);
+              setIsPro(false);
+              updates = { max_messages: 50, message_count: 0, last_reset: now, current_plan: 'PRO_monthly', is_pro: false };
+            } else if (plan === 'PRO_onetime') {
+              setMaxMessages(50);
+              setMessageCount(0);
+              setIsPro(false);
+              updates = { max_messages: 50, message_count: 0, last_reset: now, current_plan: 'PRO_onetime', is_pro: false };
+            }
+
+            await updateSubscriptionData(token, user.id, updates);
+            await loadUserData(); // רענון הסטייט
+            alert(`Purchase successful! Welcome to ${plan}`);
+          }
+        }
       }
-
-      await updateSubscriptionData(token, user.id, updates);
-      await loadUserData(); // רענון הסטייט מיד אחרי הקנייה
-    } catch (e) { console.error('Error purchasing package:', e); }
+    } catch (e: any) {
+      if (!e.userCancelled) {
+        console.error("Purchase failed", e);
+        alert("Purchase error: " + e.message);
+      }
+    }
   };
 
   const changeLanguage = async (lang: string) => {
@@ -222,27 +228,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     } catch (e) { console.error('Error saving language:', e); }
   };
 
-  const mockPurchaseSuccess = async (plan: string) => {
-    alert(`Dev Mode: Unlocking ${plan}...`);
-    setCurrentPlan(plan);
-    
-    if (user?.id) {
-       const token = await getToken({ template: 'supabase' });
-       if (token) {
-           await updateSubscriptionData(token, user.id, { current_plan: plan });
-       }
-    }
-
-    if (plan === 'PREMIUM') {
-      await purchasePackage('PREMIUM');
-    } else if (plan === 'PRO_monthly') {
-      await purchasePackage('PRO_monthly');
-    } else if (plan === 'PRO_onetime') {
-      await purchasePackage('PRO_onetime');
-    }
-  };
-
-  // איפוס לחינמי לבדיקות נוחות
   const resetToFree = async () => {
     alert('Dev Mode: Resetting to Free Account...');
     const now = Date.now();
@@ -267,7 +252,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     }
   };
 
-  // בדיקת חסימה חכמה: חוסם את כולם אם הגיעו למקסימום שלהם (גם את הפרימיום, רק שהמקסימום שלהם הוא 1,000)
   const hasReachedLimit = (dailyCount >= DAILY_FREE_LIMIT) && (messageCount >= maxMessages);
 
   return (
@@ -275,7 +259,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       dailyCount, messageCount, maxMessages, incrementMessageCount, 
       hasReachedLimit, isPro, currentPlan, purchasePackage,
       chatLanguage, changeLanguage,
-      mockPurchaseSuccess, resetToFree 
+      resetToFree 
     }}>
       {children}
     </PaywallContext.Provider>

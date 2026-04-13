@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Animated, Easing, Dimensions } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Animated, Easing, Dimensions, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,24 +12,43 @@ interface PaywallModalProps {
 
 export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
   
-  const { mockPurchaseSuccess, resetToFree, isPro } = usePaywall();
+  // 🌟 משתמשים בפונקציית הרכישה האמיתית מה-Context
+  const { purchasePackage, resetToFree, isPro, currentPlan } = usePaywall();
 
   const [isCheckoutVisible, setIsCheckoutVisible] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [isPurchasing, setIsPurchasing] = useState(false); // 🌟 מונע לחיצות כפולות בזמן טעינה
 
   const handlePlanSelect = (plan: string) => {
     setSelectedPlan(plan);
     setIsCheckoutVisible(true);
   };
 
-  const handleFinalPurchase = (paymentMode: 'one-time' | 'monthly') => {
-    if (selectedPlan) {
-      // שומרים על הלוגיקה החדשה של השרת שלנו
-      const purchaseCode = selectedPlan === 'PRO' ? `PRO_${paymentMode}` : 'PREMIUM';
-      mockPurchaseSuccess(purchaseCode);
+  // 🌟 הלוגיקה החדשה שמתחברת ל-RevenueCat
+  const handleFinalPurchase = async (paymentMode: 'one-time' | 'monthly') => {
+    if (!selectedPlan) return;
+
+    setIsPurchasing(true); // מתחיל טעינה
+
+    try {
+      let packageToBuy: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM';
+
+      if (selectedPlan === 'PRO') {
+        packageToBuy = paymentMode === 'monthly' ? 'PRO_monthly' : 'PRO_onetime';
+      } else {
+        packageToBuy = 'PREMIUM';
+      }
+
+      // קורא לפונקציה מול חנות האפליקציות ומחכה לתשובה
+      await purchasePackage(packageToBuy);
+      
+    } catch (error) {
+      console.log("User cancelled or error occurred");
+    } finally {
+      setIsPurchasing(false); // מסיים טעינה
+      setIsCheckoutVisible(false);
+      onClose(); // סוגר את המודל בסיום
     }
-    setIsCheckoutVisible(false);
-    onClose();
   };
 
   return (
@@ -38,7 +57,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
         <LinearGradient colors={['#050012', '#0a0026', '#000000']} style={styles.background}>
           <SafeAreaView style={styles.safeArea}>
             
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <TouchableOpacity style={styles.closeBtn} onPress={onClose} disabled={isPurchasing}>
               <Ionicons name="close" size={30} color="#aaaaaa" />
             </TouchableOpacity>
 
@@ -57,7 +76,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 
               <View style={styles.packsContainer}>
                 
-                {/* 1. PRO Pack (לשעבר Advanced מהמלל המקורי שלך) */}
+                {/* 1. PRO Pack */}
                 <PlanCard 
                   title="PRO" 
                   monthlyPrice="$11.99" 
@@ -66,6 +85,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                   btnText="Get PRO ⚡"
                   onPress={() => handlePlanSelect('PRO')}
                   isPopular
+                  isAlreadyPro={currentPlan === 'PRO_monthly' || currentPlan === 'PRO_onetime'}
                 >
                   <FeatureItem text="50 mission solves / month" />
                   <FeatureItem text="AI help (image + text input)" />
@@ -74,7 +94,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                   <FeatureItem text="Ads included" isCross />
                 </PlanCard>
 
-                {/* 2. PREMIUM Pack (לשעבר Fixra PRO מהמלל המקורי שלך) */}
+                {/* 2. PREMIUM Pack */}
                 <PlanCard 
                   title="PREMIUM" 
                   monthlyPrice="$24.99" 
@@ -83,7 +103,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                   btnText="Go PREMIUM 👑"
                   onPress={() => handlePlanSelect('PREMIUM')}
                   isPro={true}
-                  isAlreadyPro={isPro}
+                  isAlreadyPro={currentPlan === 'PREMIUM'}
                 >
                   <FeatureItem text="Unlimited mission solves" />
                   <FeatureItem text="AI help (image + text + video)" />
@@ -108,6 +128,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
         planName={selectedPlan || ''}
         onClose={() => setIsCheckoutVisible(false)}
         onConfirm={(mode) => handleFinalPurchase(mode)}
+        isPurchasing={isPurchasing}
       />
     </Modal>
   );
@@ -184,16 +205,14 @@ function PlanCard({ title, monthlyPrice, subDesc, badgeText, btnText, children, 
           </View>
         </View>
 
-        {/* פה נמצאת רשימת הפיצ'רים עם המלל המקורי שלך */}
         <View style={styles.featuresListContainer}>
           {children}
         </View>
         
-        {/* כפתור הרכישה */}
-        <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.btnWrapper}>
+        <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={styles.btnWrapper} disabled={isAlreadyPro}>
           <LinearGradient colors={isProCard ? ['#007acc', '#00e5ff'] : ['#8a2be2', '#ff00cc']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionButton}>
             <Text style={styles.actionButtonText}>
-              {isProCard && isAlreadyPro ? 'Active ✨' : btnText}
+              {isAlreadyPro ? 'Active ✨' : btnText}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -203,7 +222,6 @@ function PlanCard({ title, monthlyPrice, subDesc, badgeText, btnText, children, 
   );
 }
 
-// קומפוננטת פיצ'ר תומכת ב-X עבור אייטמים חסומים (כמו במקור)
 function FeatureItem({ text, isCross = false }: { text: string, isCross?: boolean }) {
   return (
     <View style={styles.featureRow}>
@@ -224,9 +242,9 @@ function FeatureItem({ text, isCross = false }: { text: string, isCross?: boolea
 }
 
 // ==========================================
-// קומפוננטת האישור (Checkout Modal) - עם המלל המקורי!
+// קומפוננטת האישור (Checkout Modal)
 // ==========================================
-function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boolean, planName: string, onClose: () => void, onConfirm: (mode: 'one-time'|'monthly') => void }) {
+function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: { visible: boolean, planName: string, onClose: () => void, onConfirm: (mode: 'one-time'|'monthly') => void, isPurchasing: boolean }) {
   const slideAnim = useRef(new Animated.Value(Dimensions.get('window').height)).current;
   const [isRendered, setIsRendered] = useState(visible);
   
@@ -288,7 +306,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
     <View style={styles.checkoutOverlay}>
       <Animated.View style={[styles.checkoutSheet, { transform: [{ translateY: slideAnim }] }]}>
         
-        <TouchableOpacity style={styles.checkoutClose} onPress={onClose}>
+        <TouchableOpacity style={styles.checkoutClose} onPress={onClose} disabled={isPurchasing}>
           <Ionicons name="close" size={28} color="#aaaaaa" />
         </TouchableOpacity>
 
@@ -299,6 +317,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
             <TouchableOpacity 
               style={[styles.toggleBtn, paymentMode === 'monthly' && styles.toggleBtnActive]} 
               onPress={() => setPaymentMode('monthly')}
+              disabled={isPurchasing}
             >
               <Text style={[styles.toggleBtnText, paymentMode === 'monthly' && styles.toggleBtnTextActive]}>Monthly ($11.99)</Text>
             </TouchableOpacity>
@@ -306,6 +325,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
             <TouchableOpacity 
               style={[styles.toggleBtn, paymentMode === 'one-time' && styles.toggleBtnActive]} 
               onPress={() => setPaymentMode('one-time')}
+              disabled={isPurchasing}
             >
               <Text style={[styles.toggleBtnText, paymentMode === 'one-time' && styles.toggleBtnTextActive]}>One-Time ($24.99)</Text>
             </TouchableOpacity>
@@ -324,9 +344,13 @@ function CheckoutModal({ visible, planName, onClose, onConfirm }: { visible: boo
           ))}
         </View>
 
-        <TouchableOpacity activeOpacity={0.8} onPress={() => onConfirm(paymentMode)} style={{width: '100%'}}>
-          <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.confirmBtn}>
-            <Text style={styles.confirmBtnText}>Buy Now {checkoutPrice}</Text>
+        <TouchableOpacity activeOpacity={0.8} onPress={() => onConfirm(paymentMode)} style={{width: '100%'}} disabled={isPurchasing}>
+          <LinearGradient colors={isPurchasing ? ['#555', '#333'] : ['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.confirmBtn}>
+            {isPurchasing ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <Text style={styles.confirmBtnText}>Buy Now {checkoutPrice}</Text>
+            )}
           </LinearGradient>
         </TouchableOpacity>
 
@@ -403,7 +427,7 @@ const styles = StyleSheet.create({
   timelineDesc: { color: '#aaaaaa', fontSize: 12, marginTop: 3 },
 
   checkoutTimelineWrapper: { marginBottom: 25 },
-  confirmBtn: { paddingVertical: 18, borderRadius: 30, alignItems: 'center' },
+  confirmBtn: { paddingVertical: 18, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
   confirmBtnText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold', letterSpacing: 1 },
   
   checkoutFooterText: { color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginTop: 15, fontStyle: 'italic', fontWeight: '500' }

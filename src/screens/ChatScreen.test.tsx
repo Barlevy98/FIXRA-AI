@@ -42,12 +42,18 @@ jest.mock('../utils/translations', () => ({
 
 // מזייפים את שאר הספריות של הטלפון
 jest.mock('@react-native-async-storage/async-storage', () => require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
+
+// 🌟 הנה התיקון: זיוף מלא ומושלם של כל פונקציות המסד נתונים!
 jest.mock('../utils/db', () => ({
   getUserChatSessions: jest.fn(() => Promise.resolve([])),
-  saveChatSession: jest.fn(),
+  saveChatSession: jest.fn(() => Promise.resolve(true)),
   getUserTosStatus: jest.fn(() => Promise.resolve(true)),
-  getUserTutorialStatus: jest.fn(() => Promise.resolve(true))
+  getUserTutorialStatus: jest.fn(() => Promise.resolve(true)),
+  markTutorialAsSeen: jest.fn(() => Promise.resolve(true)),
+  saveBookmark: jest.fn(() => Promise.resolve(true)),
+  getUserBookmarks: jest.fn(() => Promise.resolve([]))
 }));
+
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 jest.mock('expo-linear-gradient', () => ({ LinearGradient: 'LinearGradient' }));
 jest.mock('expo-haptics', () => ({
@@ -61,11 +67,15 @@ jest.mock('expo-image-picker', () => ({}));
 jest.mock('expo-video-thumbnails', () => ({}));
 jest.mock('expo-file-system/legacy', () => ({}));
 
-// מזייפים את המודלים כדי שלא יפריעו לרינדור המסך
+// מזייפים את המודלים כדי שלא יפריעו לרינדור המסך ולא יזרקו שגיאות אנימציה
 jest.mock('../components/PaywallModal', () => 'PaywallModal');
 jest.mock('../components/ProfileModal', () => 'ProfileModal');
 jest.mock('../components/TutorialModal', () => 'TutorialModal');
 jest.mock('../components/TermsModal', () => 'TermsModal');
+jest.mock('./SettingsScreen', () => 'SettingsScreen');
+jest.mock('./FavoritesScreen', () => 'FavoritesScreen');
+jest.mock('../components/TypingIndicator', () => 'TypingIndicator');
+jest.mock('../components/CommunityModal', () => 'CommunityModal');
 
 
 // --- משתיק אזהרות רעש של React ---
