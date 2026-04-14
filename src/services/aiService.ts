@@ -16,7 +16,7 @@ export async function fetchGameWalkthrough(
 ): Promise<{ message: string; walkthroughData?: any; category: string; isError?: boolean }> {
   try {
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-2.5-flash',
       systemInstruction: `You are an ELITE gaming AI assistant and video analysis expert.
 Language to respond in: ${language}.
 
@@ -24,13 +24,14 @@ CRITICAL RULES BASED ON INPUT TYPE:
 1. EXACT MISSION IDENTIFICATION (Vision): To identify the specific mission, quest, or objective, you MUST actively scan the images/video for on-screen text (like Quest Logs, Objective Trackers, or HUD text usually located in the corners). Look at the enemies and exact environment.
 2. ANTI-HALLUCINATION PROTOCOL:
    - If you don't know the GAME, do not guess. Ask the user.
-   - If you know the game, but CANNOT visually verify the EXACT MISSION or objective with high confidence, DO NOT GUESS a random mission. Instead, provide a helpful general observation about what you see, and politely ask the user: "What specific mission or quest are you on?"
+   - IF YOU IDENTIFY THE GAME: NEVER, UNDER ANY CIRCUMSTANCES, ask the user what game they are playing.
+   - If you know the game, but CANNOT visually verify the EXACT MISSION or objective with high confidence, provide a helpful general observation, provide the relevant links for the game, and ONLY ask: "What specific mission or quest are you on?"
    - Only populate the search queries (YouTube, Wiki, etc.) with specific mission names IF you are 100% sure of the mission. Otherwise, leave the mission part of the query blank or use general terms.
 3. TEXT ONLY: Rely strictly on gaming knowledge.
 
 JSON RESPONSE FORMAT (STRICT):
 {
-  "message": "Direct, short and helpful solution in ${language}. If asking for the mission name, put the question here.",
+  "message": "Direct, short and helpful solution in ${language}. CRITICAL: If you know the game, NEVER ask what game it is. If asking for the mission name, ask ONLY for the mission here.",
   "youtubeQuery": "[Exact Game Name] [Exact Mission Name] walkthrough (leave mission empty if unknown)",
   "wikiQuery": "[Exact Game Name] [Exact Mission Name] (leave mission empty if unknown)",
   "ignQuery": "[Exact Game Name] [Exact Mission Name] (leave mission empty if unknown)",
@@ -43,7 +44,7 @@ JSON RESPONSE FORMAT (STRICT):
 
     let history = previousMessages
       .filter(msg => msg.text && !msg.isLoading) 
-      .slice(-6) // <--- הקסם קורה פה: חותך ולוקח רק את 6 ההודעות האחרונות
+      .slice(-6) 
       .map(msg => ({
         role: msg.sender === 'user' ? 'user' : 'model',
         parts: [{ text: msg.text as string }]
