@@ -353,7 +353,7 @@ export const deleteChatSession = async (clerkToken: string, sessionId: string) =
   
   return true;
 };
-// מחיקת *כל* שיחות הצ'אט של המשתמש מהשרת
+// מחיקת כל שיחות הצ'אט של המשתמש מהשרת
 export const deleteAllUserChatSessions = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase

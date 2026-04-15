@@ -79,7 +79,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                 {/* 1. PRO Pack */}
                 <PlanCard 
                   title="PRO" 
-                  monthlyPrice="$11.99" 
+                  monthlyPrice="$9.99" 
                   subDesc="Best Value"
                   badgeText="🔥 MOST POPULAR"
                   btnText="Get PRO ⚡"
@@ -97,7 +97,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                 {/* 2. PREMIUM Pack */}
                 <PlanCard 
                   title="PREMIUM" 
-                  monthlyPrice="$24.99" 
+                  monthlyPrice="$15.99" 
                   subDesc="Unlimited Power"
                   badgeText="👑 ULTIMATE EXPERIENCE"
                   btnText="Go PREMIUM 👑"
@@ -279,14 +279,14 @@ function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: 
 
   if (planName === 'PRO') {
     if (paymentMode === 'one-time') {
-      checkoutPrice = '$24.99';
+      checkoutPrice = '$15.99';
       steps = [
         { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
         { icon: "battery-half-outline", title: "50 Total Solves", desc: "You get exactly 50 solves. Does not renew." },
         { icon: "wallet-outline", title: "One-Time Payment", desc: "Pay once, no recurring charges.", isLast: true }
       ];
     } else {
-      checkoutPrice = '$11.99';
+      checkoutPrice = '$9.99';
       steps = [
         { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
         { icon: "time-outline", title: "50 Monthly Solves", desc: "Get 50 mission solves renewed every month." },
@@ -294,7 +294,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: 
       ];
     }
   } else {
-    checkoutPrice = '$24.99';
+    checkoutPrice = '$15.99';
     steps = [
       { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
       { icon: "infinite-outline", title: "Unlimited Power", desc: "Never run out of solves. Truly unlimited." },
@@ -319,7 +319,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: 
               onPress={() => setPaymentMode('monthly')}
               disabled={isPurchasing}
             >
-              <Text style={[styles.toggleBtnText, paymentMode === 'monthly' && styles.toggleBtnTextActive]}>Monthly ($11.99)</Text>
+              <Text style={[styles.toggleBtnText, paymentMode === 'monthly' && styles.toggleBtnTextActive]}>Monthly ($9.99)</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -327,7 +327,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: 
               onPress={() => setPaymentMode('one-time')}
               disabled={isPurchasing}
             >
-              <Text style={[styles.toggleBtnText, paymentMode === 'one-time' && styles.toggleBtnTextActive]}>One-Time ($24.99)</Text>
+              <Text style={[styles.toggleBtnText, paymentMode === 'one-time' && styles.toggleBtnTextActive]}>One-Time ($15.99)</Text>
             </TouchableOpacity>
           </View>
         )}

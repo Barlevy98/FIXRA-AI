@@ -7,6 +7,21 @@ const YOUTUBE_API_KEY = process.env.EXPO_PUBLIC_YOUTUBE_API_KEY || '';
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
+// --- 1. TypeScript Interface ---
+interface AIResponseJSON {
+  confidence?: number;
+  quickFixTitle?: string;
+  message?: string;
+  taskSummary?: string;
+  youtubeQuery?: string;
+  wikiQuery?: string;
+  ignQuery?: string;
+  polygonQuery?: string;
+  mapgenieQuery?: string;
+  fextralifeQuery?: string;
+  category?: string;
+}
+
 export async function fetchGameWalkthrough(
   userText: string,
   media: { uri: string; type: 'image' | 'video'; base64?: string | string[] } | null,
@@ -14,30 +29,67 @@ export async function fetchGameWalkthrough(
   previousMessages: MessageType[] = [],
   userPlan: string = 'Free'
 ): Promise<{ message: string; walkthroughData?: any; category: string; isError?: boolean }> {
+  
+  // --- 2. Fail Fast:Api keys---
+  if (!GEMINI_API_KEY) {
+    console.error('AI Service Error: Missing Gemini API Key');
+    return {
+      message: getTranslation(language).aiError || "An error occurred. Don't worry, your credit was not used. Please try again.", 
+      category: 'General',
+      isError: true 
+    };
+  }
+
   try {
+    const hasMedia = media && media.base64 && (typeof media.base64 === 'string' || media.base64.length > 0);
+    const selectedModel = hasMedia ? 'gemini-2.5-flash' : 'gemini-2.5-flash-lite';
+
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash',
+      model: selectedModel,
+      // --- עדכון הפרומפט  ---
       systemInstruction: `You are an ELITE gaming AI assistant and video analysis expert.
 Language to respond in: ${language}.
+CRITICAL JSON RULES:
+- Output ONLY valid raw JSON. No markdown formatting, no backticks (\`\`\`), no introductory text.
+- Do not include ANY text outside the JSON.
+- The response MUST start with { and end with }.
+
+ADDITIONAL ENFORCEMENTS (CRITICAL):
+- Include "confidence" (0-100) representing how sure you are of the exact mission.
+- If confidence < 90% for exact mission -> Treat the mission as UNKNOWN.
+- Add "quickFixTitle" (3-5 words max, e.g., "Shoot the weak spot").
+- taskSummary MUST be under 25 words total.
+- taskSummary MUST include a clear immediate action.
+- NEVER return vague advice. ALWAYS provide value, even if mission is unknown.
+- NEVER return both 'message' and 'taskSummary'. One MUST be empty.
+- Queries must prioritize: "fast walkthrough", "no damage", "easy guide".
 
 CRITICAL RULES BASED ON INPUT TYPE:
-1. EXACT MISSION IDENTIFICATION (Vision): To identify the specific mission, quest, or objective, you MUST actively scan the images/video for on-screen text (like Quest Logs, Objective Trackers, or HUD text usually located in the corners). Look at the enemies and exact environment.
-2. ANTI-HALLUCINATION PROTOCOL:
-   - If you don't know the GAME, do not guess. Ask the user.
-   - IF YOU IDENTIFY THE GAME: NEVER, UNDER ANY CIRCUMSTANCES, ask the user what game they are playing.
-   - If you know the game, but CANNOT visually verify the EXACT MISSION or objective with high confidence, provide a helpful general observation, provide the relevant links for the game, and ONLY ask: "What specific mission or quest are you on?"
-   - Only populate the search queries (YouTube, Wiki, etc.) with specific mission names IF you are 100% sure of the mission. Otherwise, leave the mission part of the query blank or use general terms.
-3. TEXT ONLY: Rely strictly on gaming knowledge.
+1. EXACT MISSION IDENTIFICATION (Vision): Scan images/video for on-screen text (Quest Logs, HUD) to identify the specific mission/quest. Look at enemies and environment.
+2. ANTI-HALLUCINATION & RESPONSE ROUTING:
+   - If NO GAME IDENTIFIED from input: Populate 'message' asking the user what game they are playing. Leave 'taskSummary' and all queries empty.
+   - IF YOU KNOW THE GAME, NEVER ask what game it is.
+   - If game is known, but mission is UNKNOWN (or confidence < 90%):
+     - Leave 'message' EMPTY.
+     - Populate 'taskSummary' with general progression advice and explicitly ask: "What specific mission or quest are you on?".
+     - Leave queries empty.
+   - If exact mission IS known (confidence >= 90%):
+     - Leave 'message' EMPTY.
+     - Populate 'taskSummary' with a clear, ACTIONABLE step (under 25 words).
+     - Populate the search queries with specific mission names.
 
-JSON RESPONSE FORMAT (STRICT):
+JSON RESPONSE FORMAT (STRICT): Follow this format precisely. Populate in ${language}.
 {
-  "message": "Direct, short and helpful solution in ${language}. CRITICAL: If you know the game, NEVER ask what game it is. If asking for the mission name, ask ONLY for the mission here.",
-  "youtubeQuery": "[Exact Game Name] [Exact Mission Name] walkthrough (leave mission empty if unknown)",
-  "wikiQuery": "[Exact Game Name] [Exact Mission Name] (leave mission empty if unknown)",
-  "ignQuery": "[Exact Game Name] [Exact Mission Name] (leave mission empty if unknown)",
-  "polygonQuery": "[Exact Game Name] [Exact Mission Name] (leave mission empty if unknown)",
-  "mapgenieQuery": "[Exact Game Name] [Item/Location] (leave empty if unknown)",
-  "fextralifeQuery": "[Exact Game Name] [Boss/Quest] (leave empty if unknown)",
+  "confidence": 0,
+  "quickFixTitle": "Short 3-5 word action",
+  "message": "Questions to the user ONLY if the game is completely unknown. Otherwise, leave empty.",
+  "taskSummary": "Actionable tip under 25 words. NEVER use if 'message' is populated.",
+  "youtubeQuery": "[Exact Game Name] [Exact Mission Name] fast walkthrough",
+  "wikiQuery": "[Exact Game Name] [Exact Mission Name] wiki guide",
+  "ignQuery": "[Exact Game Name] [Exact Mission Name] ign walkthrough",
+  "polygonQuery": "[Exact Game Name] [Exact Mission Name] polygon guide",
+  "mapgenieQuery": "[Exact Game Name] [Item/Location] mapgenie",
+  "fextralifeQuery": "[Exact Game Name] [Boss/Quest] fextralife",
   "category": "The official Game Name (or 'Unknown')"
 }`
     });
@@ -86,7 +138,17 @@ JSON RESPONSE FORMAT (STRICT):
 
     promptParts.push("Remember to respond STRICTLY with a valid JSON as instructed.");
 
-    const result = await chat.sendMessage(promptParts);
+    // --- 3. Timeout Mechanism (8 sec ) ---
+    let timeoutId: NodeJS.Timeout;
+    const timeoutPromise = new Promise<any>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error("AI_TIMEOUT")), 8000);
+    });
+
+    const result = await Promise.race([
+      chat.sendMessage(promptParts),
+      timeoutPromise
+    ]).finally(() => clearTimeout(timeoutId)); // <--- ברגע שיש תשובה, עוצרים את השעון
+
     const responseText = result.response.text();
     
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -94,10 +156,18 @@ JSON RESPONSE FORMAT (STRICT):
       throw new Error("Invalid AI response format");
     }
     
-    const aiResponseJSON: any = JSON.parse(jsonMatch[0]);
+    // --- 4.JSON ---
+    let aiResponseJSON: AIResponseJSON;
+    try {
+      aiResponseJSON = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.error("JSON Parse Error:", parseError);
+      throw new Error("Corrupted JSON from AI");
+    }
+
     let allAvailableLinks: any[] = [];
 
-    // --- 1. YouTube API ---
+    // --- שאילתות החיפוש ---
     const ytQ = aiResponseJSON.youtubeQuery || '';
     if (ytQ) {
       try {
@@ -117,7 +187,6 @@ JSON RESPONSE FORMAT (STRICT):
       } catch(e) { console.error("YouTube Fetch Error:", e); }
     }
 
-    // --- 2. Fandom Wiki ---
     if (aiResponseJSON.wikiQuery) {
       allAvailableLinks.push({
         type: 'wiki',
@@ -129,7 +198,6 @@ JSON RESPONSE FORMAT (STRICT):
       });
     }
 
-    // --- 3. IGN ---
     if (aiResponseJSON.ignQuery) {
       allAvailableLinks.push({
         type: 'ign',
@@ -141,7 +209,6 @@ JSON RESPONSE FORMAT (STRICT):
       });
     }
 
-    // --- 4. Polygon ---
     if (aiResponseJSON.polygonQuery) {
       allAvailableLinks.push({
         type: 'polygon',
@@ -153,7 +220,6 @@ JSON RESPONSE FORMAT (STRICT):
       });
     }
 
-    // --- 5. MapGenie ---
     if (aiResponseJSON.mapgenieQuery) {
       allAvailableLinks.push({
         type: 'mapgenie',
@@ -165,7 +231,6 @@ JSON RESPONSE FORMAT (STRICT):
       });
     }
 
-    // --- 6. Fextralife ---
     if (aiResponseJSON.fextralifeQuery) {
       allAvailableLinks.push({
         type: 'fextralife',
@@ -177,7 +242,6 @@ JSON RESPONSE FORMAT (STRICT):
       });
     }
 
-    // --- חיתוך הקישורים לפי החבילות החדשות ---
     let allowedLinksCount = 0;
     if (userPlan === 'PREMIUM') {
       allowedLinksCount = 10; 
@@ -194,8 +258,18 @@ JSON RESPONSE FORMAT (STRICT):
       walkthroughData[link.type] = link.data;
     });
 
+    
+    let formattedSummary = aiResponseJSON.taskSummary || '';
+    if (aiResponseJSON.quickFixTitle && formattedSummary) {
+      formattedSummary = `💡 **${aiResponseJSON.quickFixTitle}**\n${formattedSummary}`;
+    }
+
+    const finalMessageText = [aiResponseJSON.message, formattedSummary]
+      .filter(text => text && text.trim().length > 0)
+      .join('\n\n');
+
     return {
-      message: aiResponseJSON.message,
+      message: finalMessageText,
       walkthroughData: Object.keys(walkthroughData).length > 0 ? walkthroughData : undefined,
       category: aiResponseJSON.category || 'General',
       isError: false
