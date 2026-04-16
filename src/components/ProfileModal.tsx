@@ -9,7 +9,6 @@ import { getTranslation } from '../utils/translations';
 import AffiliateModal from './AffiliateModal'; 
 import SettingsScreen from '../screens/SettingsScreen'; 
 import * as Haptics from 'expo-haptics';
-// 🌟 ייבאנו את פונקציית העדכון מהדאטה-בייס
 import { updateUserName } from '../utils/db'; 
 
 interface ProfileModalProps {
@@ -23,18 +22,23 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets(); 
   
-  const { isPro, currentPlan, chatLanguage, resetToFree } = usePaywall();
+  // 🌟 משכנו גם את הנתונים החיים של ההודעות מהקונטקסט!
+  const { isPro, currentPlan, chatLanguage, resetToFree, dailyCount, messageCount, maxMessages } = usePaywall();
   
   const [showPlanDetails, setShowPlanDetails] = useState(false);
   const [showAffiliateModal, setShowAffiliateModal] = useState(false);
   const [affiliateMode, setAffiliateMode] = useState<'invite' | 'creator'>('invite');
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
 
-  // 🌟 סטייטים חדשים לעריכת השם
   const [isEditNameVisible, setIsEditNameVisible] = useState(false);
   const [newName, setNewName] = useState('');
 
   const t = getTranslation(chatLanguage);
+
+  // משתני עזר לזיהוי המנוי
+  const isPremium = currentPlan === 'PREMIUM';
+  const isProPlan = currentPlan.startsWith('PRO');
+  const isFree = currentPlan === 'Free';
 
   const handleOpenStore = () => {
     setShowPlanDetails(false); 
@@ -65,7 +69,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
     );
   };
 
-  // 🌟 הפונקציה ששומרת את השם ב-Clerk וב-Supabase
   const handleSaveName = async () => {
     if (!newName.trim() || !user) {
       setIsEditNameVisible(false);
@@ -75,7 +78,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      // 1. מעדכנים ב-Clerk כדי שה-UI יתעדכן מיד בכל האפליקציה
       const nameParts = newName.trim().split(' ');
       const firstName = nameParts[0];
       const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
@@ -85,7 +87,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
         lastName: lastName,
       });
 
-      // 2. מעדכנים ב-Supabase שיהיה לנו גם בדאטה-בייס
       const token = await getToken({ template: 'supabase' });
       if (token) {
         await updateUserName(token, user.id, newName.trim());
@@ -100,7 +101,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
 
   const openEditNameModal = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // ממלאים את השדה בשם הנוכחי
     const currentFullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
     setNewName(currentFullName);
     setIsEditNameVisible(true);
@@ -150,19 +150,19 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                     <Ionicons name="person" size={40} color="#6366f1" />
                   </View>
                 )}
-                {isPro && (
-                  <View style={styles.proBadge}>
-                    <Ionicons name="star" size={12} color="#fff" />
+                {/* 🌟 שינוי צבע תג ה-VIP על התמונה לפי המנוי */}
+                {!isFree && (
+                  <View style={[styles.proBadge, { backgroundColor: isPremium ? '#00e5ff' : '#ff00cc' }]}>
+                    <Ionicons name={isPremium ? "diamond" : "flash"} size={14} color={isPremium ? "#000" : "#fff"} />
                   </View>
                 )}
               </View>
               
-              {/* 🌟 השם + כפתור עריכה לידו */}
               <TouchableOpacity style={styles.nameEditContainer} onPress={openEditNameModal} activeOpacity={0.7}>
                 <Text style={styles.name}>
                   {[user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Gamer'}
                 </Text>
-                <Ionicons name="pencil" size={18} color="#00e5ff" style={styles.editIcon} />
+                <Ionicons name="pencil" size={18} color={isPremium ? "#00e5ff" : isProPlan ? "#ff00cc" : "#00e5ff"} style={styles.editIcon} />
               </TouchableOpacity>
               
               <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress}</Text>
@@ -174,31 +174,40 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                 <Text style={styles.sectionTitle}>{t.profileStatus}</Text>
                 
                 <TouchableOpacity activeOpacity={0.8} onPress={() => setShowPlanDetails(true)}>
-                  {isPro ? (
-                    <View style={[styles.glassCard, styles.glassCardPro]}>
-                      <View style={styles.cardHeader}>
-                        <Ionicons name="diamond" size={24} color="#00e5ff" />
-                        <Text style={styles.proTitle}>FIXRA PREMIUM</Text>
-                      </View>
-                      <Text style={styles.statsTextPro}>Active Plan</Text>
-                      <Text style={styles.statsSubText}>Unlimited Access</Text>
-                      <Ionicons name="chevron-forward" size={20} color="#00e5ff" style={styles.chevronRightAbs} />
-                    </View>
-                  ) : (
-                    <View style={styles.glassCard}>
-                      <View style={styles.cardHeader}>
-                        <Ionicons name="cube-outline" size={24} color="#aaaaaa" />
-                        <Text style={styles.freeTitle}>CURRENT PLAN</Text>
-                      </View>
-                      <Text style={styles.statsTextPro}>
-                        {getDisplayPlanName()}
+                  <View style={[
+                    styles.glassCard, 
+                    isPremium ? styles.glassCardPremium : isProPlan ? styles.glassCardPro : null
+                  ]}>
+                    <View style={styles.cardHeader}>
+                      <Ionicons name={isPremium ? "diamond" : isProPlan ? "flash" : "cube-outline"} size={24} color={isPremium ? "#00e5ff" : isProPlan ? "#ff00cc" : "#aaaaaa"} />
+                      <Text style={[styles.planCardTitle, { color: isPremium ? '#00e5ff' : isProPlan ? '#ff00cc' : '#aaaaaa' }]}>
+                        {isPremium ? 'FIXRA PREMIUM' : isProPlan ? 'FIXRA PRO' : 'CURRENT PLAN'}
                       </Text>
-                      <Text style={styles.statsText}>
-                        {currentPlan === 'Free' ? '3 Free Messages Daily' : 'Enhanced Features'}
-                      </Text>
-                      <Ionicons name="chevron-forward" size={20} color="#aaaaaa" style={styles.chevronRightAbs} />
                     </View>
-                  )}
+                    
+                    <Text style={styles.statsTextPro}>{getDisplayPlanName()}</Text>
+                    
+                    {/* 🌟 הוספת מד ההתקדמות הוויזואלי 🌟 */}
+                    {isPremium ? (
+                      <Text style={[styles.statsSubText, { color: '#00e5ff', marginTop: 5 }]}>Unlimited Access 👑</Text>
+                    ) : isProPlan ? (
+                      <View style={styles.progressContainer}>
+                        <View style={styles.progressTrack}>
+                          <View style={[styles.progressFill, { width: `${Math.min((messageCount / maxMessages) * 100, 100)}%`, backgroundColor: '#ff00cc' }]} />
+                        </View>
+                        <Text style={styles.progressText}>{messageCount} / {maxMessages} used</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.progressContainer}>
+                        <View style={styles.progressTrack}>
+                          <View style={[styles.progressFill, { width: `${Math.min((dailyCount / 3) * 100, 100)}%`, backgroundColor: '#888' }]} />
+                        </View>
+                        <Text style={styles.progressText}>{dailyCount} / 3 free daily messages used</Text>
+                      </View>
+                    )}
+
+                    <Ionicons name="chevron-forward" size={20} color={isPremium ? "#00e5ff" : isProPlan ? "#ff00cc" : "#aaaaaa"} style={styles.chevronRightAbs} />
+                  </View>
                 </TouchableOpacity>
               </View>
 
@@ -211,7 +220,10 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                     <Text style={styles.settingRowText}>Invite Friends</Text>
                   </View>
                   <View style={styles.settingRowRight}>
-                    <View style={styles.badgeNew}><Text style={styles.badgeNewText}>GET PRO</Text></View>
+                    {/* 🌟 גרדיאנט לבאדג'ים של השותפים 🌟 */}
+                    <LinearGradient colors={['#00e5ff', '#007acc']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.badgeGradient}>
+                      <Text style={styles.badgeTextDark}>GET PRO</Text>
+                    </LinearGradient>
                     <Ionicons name="chevron-forward" size={20} color="#555" />
                   </View>
                 </TouchableOpacity>
@@ -222,7 +234,9 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                     <Text style={styles.settingRowText}>Creator Program</Text>
                   </View>
                   <View style={styles.settingRowRight}>
-                    <View style={styles.badgeEarn}><Text style={styles.badgeEarnText}>EARN $$$</Text></View>
+                    <LinearGradient colors={['#ff00cc', '#b300ff']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.badgeGradient}>
+                      <Text style={styles.badgeTextLight}>EARN $$$</Text>
+                    </LinearGradient>
                     <Ionicons name="chevron-forward" size={20} color="#555" />
                   </View>
                 </TouchableOpacity>
@@ -240,7 +254,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
             </ScrollView>
           </View>
 
-          {/* מודלים קיימים (תוכנית, שותפים, הגדרות) */}
+          {/* מודלים קיימים (תוכנית, שותפים, הגדרות, עריכת שם) */}
           <Modal animationType="slide" transparent={true} visible={showPlanDetails} onRequestClose={() => setShowPlanDetails(false)}>
             <View style={styles.bottomSheetOverlay}>
               <View style={[styles.bottomSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : 20 }]}>
@@ -256,7 +270,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                   <View style={styles.planFeaturesList}>
                     {getActivePlanFeatures().map((feature, index) => (
                       <View key={index} style={styles.planFeatureRow}>
-                        <Ionicons name="checkmark-circle" size={20} color="#00e5ff" style={{marginRight: 10}} />
+                        <Ionicons name="checkmark-circle" size={20} color={isPremium ? "#00e5ff" : isProPlan ? "#ff00cc" : "#aaaaaa"} style={{marginRight: 10}} />
                         <Text style={styles.planFeatureText}>{feature}</Text>
                       </View>
                     ))}
@@ -279,7 +293,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
           <AffiliateModal visible={showAffiliateModal} onClose={() => setShowAffiliateModal(false)} mode={affiliateMode} />
           <SettingsScreen visible={isSettingsVisible} onClose={() => setIsSettingsVisible(false)} />
 
-          {/* 🌟 חלונית עריכת השם החדשה */}
           <Modal animationType="fade" transparent={true} visible={isEditNameVisible} onRequestClose={() => setIsEditNameVisible(false)}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
               <View style={styles.modalOverlay}>
@@ -333,9 +346,8 @@ const styles = StyleSheet.create({
   avatarContainer: { position: 'relative', marginBottom: 15 },
   avatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#8a2be2' },
   avatarPlaceholder: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#1e1e1e', borderWidth: 3, borderColor: '#8a2be2', alignItems: 'center', justifyContent: 'center' },
-  proBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#ff00cc', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#0a0026' },
+  proBadge: { position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#0a0026' },
   
-  // 🌟 סטיילים לעריכת השם
   nameEditContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 5, paddingHorizontal: 15 },
   name: { fontSize: 26, fontWeight: 'bold', color: '#ffffff' },
   editIcon: { marginLeft: 10, marginTop: 4 },
@@ -346,27 +358,31 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#aaaaaa', fontSize: 13, fontWeight: 'bold', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 },
   
   glassCard: { padding: 20, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', position: 'relative' },
-  glassCardPro: { borderColor: '#00e5ff', backgroundColor: 'rgba(0, 229, 255, 0.05)', borderWidth: 1.5 },
+  glassCardPro: { borderColor: '#ff00cc', backgroundColor: 'rgba(255, 0, 204, 0.05)', borderWidth: 1.5 },
+  glassCardPremium: { borderColor: '#00e5ff', backgroundColor: 'rgba(0, 229, 255, 0.05)', borderWidth: 1.5 },
   chevronRightAbs: { position: 'absolute', right: 20, top: '50%', transform: [{translateY: -10}] },
   
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  freeTitle: { color: '#aaaaaa', fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
-  proTitle: { color: '#00e5ff', fontSize: 18, fontWeight: 'bold', marginLeft: 8, letterSpacing: 1 },
+  planCardTitle: { fontSize: 16, fontWeight: 'bold', marginLeft: 8, letterSpacing: 1 },
   
   statsTextPro: { color: '#ffffff', fontSize: 22, fontWeight: '900', marginBottom: 5 },
-  statsText: { color: '#aaaaaa', fontSize: 14 },
-  statsSubText: { color: '#00e5ff', fontSize: 13, opacity: 0.8 },
+  statsSubText: { fontSize: 13, opacity: 0.8 },
+
+  // 🌟 סטיילים למד ההתקדמות 🌟
+  progressContainer: { width: '100%', marginTop: 12, alignItems: 'center' },
+  progressTrack: { width: '100%', height: 8, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 4, overflow: 'hidden', marginBottom: 6 },
+  progressFill: { height: '100%', borderRadius: 4 },
+  progressText: { color: '#aaaaaa', fontSize: 12, fontWeight: '600' },
 
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', padding: 18, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   settingRowLeft: { flexDirection: 'row', alignItems: 'center' },
   settingRowText: { color: '#ffffff', fontSize: 16, fontWeight: '500' },
   settingRowRight: { flexDirection: 'row', alignItems: 'center' },
 
-  badgeNew: { backgroundColor: 'rgba(0, 229, 255, 0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)' },
-  badgeNewText: { color: '#00e5ff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
-  
-  badgeEarn: { backgroundColor: 'rgba(255, 0, 204, 0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: 'rgba(255, 0, 204, 0.3)' },
-  badgeEarnText: { color: '#ff00cc', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  // 🌟 סטיילים מוגדרים לבאדג'ים החדשים 🌟
+  badgeGradient: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginRight: 10 },
+  badgeTextDark: { color: '#000000', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  badgeTextLight: { color: '#ffffff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
 
   storeButton: { width: '100%', borderRadius: 15, overflow: 'hidden', marginBottom: 20 },
   storeButtonGradient: { flexDirection: 'row', paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
@@ -391,7 +407,6 @@ const styles = StyleSheet.create({
   upgradePlanBtn: { width: '100%', paddingVertical: 16, borderRadius: 15, backgroundColor: 'rgba(0, 229, 255, 0.1)', borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.4)', alignItems: 'center' },
   upgradePlanBtnText: { color: '#00e5ff', fontSize: 16, fontWeight: 'bold' },
 
-  // 🌟 סטיילים לחלונית עריכת השם
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { width: '100%', backgroundColor: '#0a0026', borderRadius: 30, padding: 30, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(0, 229, 255, 0.3)' },
   modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#ffffff', marginBottom: 10 },

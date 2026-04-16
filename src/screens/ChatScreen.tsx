@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Animated, Dimensions, Keyboard } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Animated, Dimensions, Keyboard, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -17,12 +17,12 @@ import TermsModal from '../components/TermsModal';
 import FavoritesScreen from './FavoritesScreen';
 import SettingsScreen from './SettingsScreen';
 import CommunityModal from '../components/CommunityModal'; 
+import GameLibraryModal from '../components/GameLibraryModal'; 
 import { getTranslation } from '../utils/translations';
 import { getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus, saveBookmark, getUserBookmarks } from '../utils/db';
 import MessageBubble from '../components/MessageBubble';
 import ChatInputArea from '../components/ChatInputArea';
 import ChatSideMenu from '../components/ChatSideMenu';
-// 🌟 ה-Hook החדש שלנו!
 import { useChatManager } from '../../hooks/useChatManager';
 
 const screenWidth = Dimensions.get('window').width;
@@ -52,13 +52,23 @@ const AnimatedMessageItem = ({ isUser, children }: { isUser: boolean, children: 
 export default function ChatScreen() {
   const { user } = useUser();
   const { getToken } = useAuth();
-  const { incrementMessageCount, hasReachedLimit, chatLanguage, currentPlan } = usePaywall();
+  
+  const { 
+    incrementMessageCount, 
+    hasReachedLimit, 
+    chatLanguage, 
+    currentPlan,
+    hasUsedTrial,
+    isTrialActive,
+    startPremiumTrial
+  } = usePaywall();
   
   const t = getTranslation(chatLanguage);
   const greetingText = t.greeting(user?.firstName || '');
 
-  // 🌟 קוראים לכל המוח של הצ'אט בשורה אחת!
-  const chatManager = useChatManager(user, getToken, chatLanguage, currentPlan, t, greetingText);
+  const effectivePlan = isTrialActive ? 'PREMIUM' : currentPlan;
+
+  const chatManager = useChatManager(user, getToken, chatLanguage, effectivePlan, t, greetingText);
 
   const [inputText, setInputText] = useState('');
   const [selectedMedia, setSelectedMedia] = useState<{uri: string, type: 'image' | 'video', base64?: string | string[], thumbnailUri?: string} | null>(null);
@@ -77,6 +87,14 @@ export default function ChatScreen() {
   const [isTutorialVisible, setIsTutorialVisible] = useState(false);
   const [hasCheckedTutorial, setHasCheckedTutorial] = useState(false);
   
+  const [isGameLibraryVisible, setIsGameLibraryVisible] = useState(false);
+  const [hasAutoOpenedLibrary, setHasAutoOpenedLibrary] = useState(false);
+
+  const [dismissedTrialPopup, setDismissedTrialPopup] = useState(false);
+  
+  // 🌟 סטייט חדש לפופ-אפ החסימה המעוצב! 🌟
+  const [isLimitModalVisible, setIsLimitModalVisible] = useState(false);
+
   const slideAnim = useRef(new Animated.Value(screenWidth)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -125,12 +143,29 @@ export default function ChatScreen() {
     return () => { if (intervalId) clearInterval(intervalId); };
   }, [user, hasCheckedTutorial]);
 
+  useEffect(() => {
+    if (hasCheckedTutorial && !isTutorialVisible && !hasAutoOpenedLibrary) {
+      const allSessions = Object.values(chatManager.groupedSessions).flat();
+      const isBrandNewUser = allSessions.length === 0 || (allSessions.length === 1 && allSessions[0].messages.length <= 1 && allSessions[0].category === 'General');
+      
+      if (isBrandNewUser) {
+        setIsGameLibraryVisible(true);
+      }
+      setHasAutoOpenedLibrary(true);
+    }
+  }, [hasCheckedTutorial, isTutorialVisible, chatManager.groupedSessions, hasAutoOpenedLibrary]);
+
   const handleCloseTutorial = async (): Promise<void> => {
     setIsTutorialVisible(false);
     if (user?.id) {
       try {
         const token = await getToken({ template: 'supabase' });
         if (token) await markTutorialAsSeen(token, user.id);
+        
+        const allSessions = Object.values(chatManager.groupedSessions).flat();
+        if (allSessions.length === 0 || (allSessions.length === 1 && allSessions[0].messages.length <= 1)) {
+           setTimeout(() => setIsGameLibraryVisible(true), 500);
+        }
       } catch(e) {}
     }
   };
@@ -236,9 +271,9 @@ export default function ChatScreen() {
   const handleSendMessage = async () => {
     if (inputText.trim() === '' && !selectedMedia) return;
     
-    if (hasReachedLimit) { 
+    if (hasReachedLimit && !isTrialActive) { 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setIsPaywallVisible(true); 
+      setIsLimitModalVisible(true); // 🌟 הקפצת החלונית המעוצבת החדשה במקום ה-Alert הקודם
       return; 
     }
 
@@ -255,11 +290,34 @@ export default function ChatScreen() {
 
     if (success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); 
-      incrementMessageCount();
+      await incrementMessageCount();
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); 
     }
   };
+
+  const handleSelectGame = (gameName: string) => {
+    setIsGameLibraryVisible(false);
+    chatManager.createNewSession(undefined, gameName); 
+  };
+
+  const handleStartTrial = async () => {
+    const success = await startPremiumTrial();
+    if (success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setDismissedTrialPopup(true);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  };
+
+  // 🌟 הפונקציה שמופעלת כשנוגעים באזור החסום
+  const handleTrapClick = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    setIsLimitModalVisible(true); // פותח את המודל המעוצב החדש!
+  };
+
+  const showInYourFaceTrial = hasReachedLimit && !hasUsedTrial && !dismissedTrialPopup;
 
   return (
     <LinearGradient colors={['#050012', '#0a0026', '#000000']} style={styles.background}>
@@ -268,7 +326,7 @@ export default function ChatScreen() {
         
         <ChatSideMenu 
           slideAnim={slideAnim}
-          onNewChat={() => chatManager.createNewSession(toggleMenu)}
+          onNewChat={() => { toggleMenu(); setIsGameLibraryVisible(true); }}
           onOpenTutorial={() => { toggleMenu(); setIsTutorialVisible(true); }}
           onOpenFavorites={() => { toggleMenu(); setIsFavoritesVisible(true); }}
           onOpenCommunity={() => { toggleMenu(); setIsCommunityVisible(true); }}
@@ -327,16 +385,7 @@ export default function ChatScreen() {
               })}
             </ScrollView>
 
-            {hasReachedLimit ? (
-              <View style={styles.paywallBlockedField}>
-                <Text style={styles.paywallText}>{t.limitReached}</Text>
-                <TouchableOpacity activeOpacity={0.8} style={{width: '100%'}} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setIsPaywallVisible(true); }}>
-                  <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.paywallButton}>
-                    <Text style={styles.paywallButtonText}>{t.upgradeNow}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            ) : (
+            <View style={{ position: 'relative' }}>
               <ChatInputArea 
                 inputText={inputText}
                 setInputText={setInputText}
@@ -347,15 +396,79 @@ export default function ChatScreen() {
                 onSendMessage={handleSendMessage}
                 onOpenCamera={openCamera}
                 onOpenGallery={openGallery}
-                placeholder={t.placeholder}
+                placeholder={hasReachedLimit && !isTrialActive ? t.lockedPlaceholder : t.placeholder}
                 cameraText={t.camera}
                 galleryText={t.gallery}
                 disclaimerText={t.disclaimer}
               />
-            )}
+              
+              {hasReachedLimit && !isTrialActive && (
+                <TouchableOpacity 
+                  style={styles.paywallTrapOverlay} 
+                  activeOpacity={1}
+                  onPress={handleTrapClick}
+                />
+              )}
+            </View>
+
           </View>
         </KeyboardAvoidingView>
 
+        {/* 🌟 הפופ-אפ של ה-Trial 🌟 */}
+        <Modal visible={showInYourFaceTrial} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.trialPopupCard}>
+              <View style={styles.trialIconWrapper}>
+                 <Ionicons name="gift" size={50} color="#ff00cc" />
+              </View>
+              <Text style={styles.trialPopupTitle}>{t.trialPopupTitle}</Text>
+              <Text style={styles.trialPopupSubtitle}>{t.trialPopupSubtitle}</Text>
+              
+              <TouchableOpacity activeOpacity={0.8} style={styles.trialPopupBtn} onPress={handleStartTrial}>
+                <LinearGradient colors={['#FF007F', '#7000FF']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.trialPopupBtnGradient}>
+                  <Text style={styles.trialPopupBtnText}>{t.trialPopupBtn}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.trialPopupCloseBtn} onPress={() => setDismissedTrialPopup(true)}>
+                <Text style={styles.trialPopupCloseText}>{t.trialPopupClose}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* 🌟 הפופ-אפ המעוצב החדש: כשלוחצים על אזור ההקלדה ואין יותר הודעות (מחליף את ה-Alert המכוער) 🌟 */}
+        <Modal visible={isLimitModalVisible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.limitModalCard}>
+              <View style={styles.limitIconWrapper}>
+                 <Ionicons name="hourglass" size={38} color="#8a2be2" />
+              </View>
+              
+              <Text style={styles.limitModalTitle}>{t.limitAlertTitle}</Text>
+              <Text style={styles.limitModalSubtitle}>{t.limitReached}</Text>
+              
+              <TouchableOpacity 
+                activeOpacity={0.8} 
+                style={styles.trialPopupBtn} 
+                onPress={() => {
+                  setIsLimitModalVisible(false);
+                  setIsPaywallVisible(true);
+                }}
+              >
+                <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.trialPopupBtnGradient}>
+                  <Text style={styles.trialPopupBtnText}>{t.upgradeNow}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.trialPopupCloseBtn} onPress={() => setIsLimitModalVisible(false)}>
+                <Text style={styles.limitCancelText}>{t.cancel}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        <GameLibraryModal visible={isGameLibraryVisible} onClose={() => setIsGameLibraryVisible(false)} onSelectGame={handleSelectGame} />
         <PaywallModal visible={isPaywallVisible} onClose={() => setIsPaywallVisible(false)} />
         <ProfileModal visible={isProfileVisible} onClose={() => setIsProfileVisible(false)} onOpenPaywall={() => setIsPaywallVisible(true)} />
         <SettingsScreen visible={isSettingsVisible} onClose={() => setIsSettingsVisible(false)} />
@@ -385,8 +498,131 @@ const styles = StyleSheet.create({
   messageBubbleWrapper: { maxWidth: '85%', marginBottom: 15 },
   userBubbleWrapper: { alignSelf: 'flex-end' },
   botBubbleWrapper: { alignSelf: 'flex-start' },
-  paywallBlockedField: { padding: 20, backgroundColor: 'rgba(10, 0, 38, 0.9)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: Platform.OS === 'ios' ? 20 : 0 },
-  paywallText: { color: '#aaaaaa', fontSize: 16, marginBottom: 15, textAlign: 'center' },
-  paywallButton: { paddingHorizontal: 25, paddingVertical: 15, borderRadius: 30, width: '100%', alignItems: 'center' },
-  paywallButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 }
+  paywallTrapOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 100,
+    backgroundColor: 'transparent'
+  },
+  
+  // סגנון אחיד לשכבת הרקע הכהה של שני הפופ-אפים
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+
+  // 🌟 סטיילים ל-Trial Popup 🌟
+  trialPopupCard: {
+    backgroundColor: '#0a0026',
+    width: '100%',
+    borderRadius: 25,
+    padding: 25,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ff00cc',
+    shadowColor: '#ff00cc',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10
+  },
+  trialIconWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 0, 204, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#ff00cc'
+  },
+  trialPopupTitle: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 10
+  },
+  trialPopupSubtitle: {
+    color: '#aaaaaa',
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 30,
+    lineHeight: 22
+  },
+  trialPopupBtn: {
+    width: '100%',
+    borderRadius: 15,
+    overflow: 'hidden',
+    marginBottom: 20
+  },
+  trialPopupBtnGradient: {
+    paddingVertical: 16,
+    alignItems: 'center'
+  },
+  trialPopupBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    letterSpacing: 0.5
+  },
+  trialPopupCloseBtn: {
+    padding: 10
+  },
+  trialPopupCloseText: {
+    color: '#666666',
+    fontSize: 13,
+    fontWeight: 'bold',
+    textDecorationLine: 'underline'
+  },
+
+  // 🌟 סטיילים לפופ-אפ החסימה הרגיל (במקום ה-Alert) 🌟
+  limitModalCard: {
+    backgroundColor: '#0a0026',
+    width: '100%',
+    borderRadius: 25,
+    padding: 25,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#8a2be2', 
+    shadowColor: '#8a2be2',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 15,
+    elevation: 8
+  },
+  limitIconWrapper: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(138, 43, 226, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#8a2be2'
+  },
+  limitModalTitle: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 8
+  },
+  limitModalSubtitle: {
+    color: '#aaaaaa',
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 25,
+    lineHeight: 22
+  },
+  limitCancelText: {
+    color: '#888888',
+    fontSize: 15,
+    fontWeight: 'bold',
+  }
 });

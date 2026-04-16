@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser, useAuth } from '@clerk/clerk-expo';
-import { getUserSubscriptionData, updateSubscriptionData } from '../utils/db';
-import Purchases, { PurchasesPackage } from 'react-native-purchases'; // 🌟 ייבוא RevenueCat
+import { getUserSubscriptionData, updateSubscriptionData, updateUserLanguage } from '../utils/db';
+import Purchases, { PurchasesPackage } from 'react-native-purchases';
 
 const DAILY_FREE_LIMIT = 3;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -19,7 +19,10 @@ type PaywallContextType = {
   purchasePackage: (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => Promise<void>;
   chatLanguage: string;
   changeLanguage: (lang: string) => Promise<void>;
-  resetToFree: () => Promise<void>; // השארנו למקרה שתרצה לאפס בבדיקות
+  resetToFree: () => Promise<void>;
+  hasUsedTrial: boolean;
+  isTrialActive: boolean; 
+  startPremiumTrial: () => Promise<boolean>;
 };
 
 const PaywallContext = createContext<PaywallContextType | undefined>(undefined);
@@ -35,18 +38,20 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
   const [currentPlan, setCurrentPlan] = useState<string>('Free'); 
   const [chatLanguage, setChatLanguage] = useState('English'); 
 
+  const [hasUsedTrial, setHasUsedTrial] = useState(false); 
+  const [isTrialActive, setIsTrialActive] = useState(false); 
+
   useEffect(() => {
     AsyncStorage.getItem('@app_language').then(savedLang => {
       if (savedLang) setChatLanguage(savedLang);
     });
     
     if (user) {
-      Purchases.logIn(user.id); // רושם את המשתמש ב-RevenueCat
+      Purchases.logIn(user.id); 
       loadUserData();
     }
   }, [user]);
 
-  // טעינת נתונים ישירות מ-Supabase (הלוגיקה המקורית והחכמה שלך!)
   const loadUserData = async () => {
     if (!user?.id) return;
     
@@ -96,6 +101,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         setMaxMessages(maxMsg);
         setIsPro(data.is_pro || false);
         setCurrentPlan(plan);
+        setHasUsedTrial(data.has_used_premium_trial || false);
 
       } else {
         await updateSubscriptionData(token, user.id, {
@@ -105,21 +111,49 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
           max_messages: 0,
           current_plan: 'Free',
           is_pro: false,
-          last_reset: now
+          last_reset: now,
+          has_used_premium_trial: false 
         });
         setDailyCount(0);
         setMessageCount(0);
         setMaxMessages(0);
         setIsPro(false);
         setCurrentPlan('Free');
+        setHasUsedTrial(false);
       }
     } catch (e) {
       console.error('Error loading user data from DB:', e);
     }
   };
 
+  const startPremiumTrial = async (): Promise<boolean> => {
+    if (!user?.id || hasUsedTrial) return false; 
+    
+    try {
+      const token = await getToken({ template: 'supabase' });
+      if (!token) return false;
+
+      await updateSubscriptionData(token, user.id, {
+        has_used_premium_trial: true
+      });
+
+      setHasUsedTrial(true);
+      setIsTrialActive(true); 
+      return true;
+    } catch (error) {
+      console.error('Error starting trial:', error);
+      return false;
+    }
+  };
+
   const incrementMessageCount = async () => {
     if (!user?.id) return;
+
+    if (isTrialActive) {
+      setIsTrialActive(false);
+      return; 
+    }
+
     try {
       const token = await getToken({ template: 'supabase' });
       if (!token) return;
@@ -152,6 +186,19 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         currentCount += 1;
         updates.message_count = currentCount;
         updates.last_reset = lastReset;
+
+        // 🌟 הנה התיקון שביקשת! החזרה אוטומטית ל-Free ברגע שנגמרות ההודעות בחד-פעמי 🌟
+        if (currentPlan === 'PRO_onetime' && currentCount >= (data?.max_messages || 50)) {
+          updates.current_plan = 'Free';
+          updates.is_pro = false;
+          updates.max_messages = 0;
+          updates.message_count = 0; // נאפס לו כדי שיראה "נקי" בתור חינמי
+
+          setCurrentPlan('Free');
+          setIsPro(false);
+          setMaxMessages(0);
+          currentCount = 0; 
+        }
       }
 
       setDailyCount(currentDailyCount);
@@ -161,29 +208,22 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     } catch (e) { console.error('Error saving message count to DB:', e); }
   };
 
-  // 🚀 הרכישה האמיתית שמשלבת את RevenueCat + Supabase
   const purchasePackage = async (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => {
     if (!user?.id) return;
     try {
-      // 1. קודם כל, פונים ל-RevenueCat כדי לפתוח את חלונית התשלום
       const offerings = await Purchases.getOfferings();
       
       if (offerings.current !== null) {
         let selectedPackage: PurchasesPackage | null = null;
 
-        // ממפים את הבקשה שלך לחבילות שהגדרנו ב-RevenueCat
         if (plan === 'PRO_monthly') selectedPackage = offerings.current.monthly;
-        if (plan === 'PRO_onetime') selectedPackage = offerings.current.annual; // נניח ששמנו את זה תחת annual
+        if (plan === 'PRO_onetime') selectedPackage = offerings.current.annual; 
         if (plan === 'PREMIUM') selectedPackage = offerings.current.lifetime;
 
         if (selectedPackage) {
-          // הקופאי: גובה את התשלום דרך אפל/גוגל
           const { customerInfo } = await Purchases.purchasePackage(selectedPackage);
           
-          // אם הקנייה עברה בהצלחה!
           if (typeof customerInfo.entitlements.active['Fixra AI Pro'] !== "undefined") {
-            
-            // 2. עכשיו מעדכנים את Supabase שלנו כדי שידע כמה הודעות לתת
             const token = await getToken({ template: 'supabase' });
             if (!token) return;
 
@@ -208,7 +248,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
             }
 
             await updateSubscriptionData(token, user.id, updates);
-            await loadUserData(); // רענון הסטייט
+            await loadUserData(); 
             alert(`Purchase successful! Welcome to ${plan}`);
           }
         }
@@ -225,17 +265,28 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     try {
       setChatLanguage(lang);
       await AsyncStorage.setItem('@app_language', lang);
-    } catch (e) { console.error('Error saving language:', e); }
+      
+      if (user?.id) {
+        const token = await getToken({ template: 'supabase' });
+        if (token) {
+          await updateUserLanguage(token, user.id, lang);
+        }
+      }
+    } catch (e) { 
+      console.error('Error saving language:', e); 
+    }
   };
 
   const resetToFree = async () => {
-    alert('Dev Mode: Resetting to Free Account...');
+    alert('Dev Mode: Resetting to Free Account (and resetting Trial)...');
     const now = Date.now();
     setIsPro(false);
     setCurrentPlan('Free');
     setMaxMessages(0);
     setMessageCount(0);
     setDailyCount(0);
+    setHasUsedTrial(false); 
+    setIsTrialActive(false);
     
     if (user?.id) {
        const token = await getToken({ template: 'supabase' });
@@ -246,20 +297,21 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
               max_messages: 0,
               message_count: 0,
               daily_message_count: 0,
-              last_daily_reset: now
+              last_daily_reset: now,
+              has_used_premium_trial: false
           });
        }
     }
   };
 
-  const hasReachedLimit = (dailyCount >= DAILY_FREE_LIMIT) && (messageCount >= maxMessages);
+  const hasReachedLimit = (dailyCount >= DAILY_FREE_LIMIT) && (messageCount >= maxMessages) && !isTrialActive;
 
   return (
     <PaywallContext.Provider value={{ 
       dailyCount, messageCount, maxMessages, incrementMessageCount, 
       hasReachedLimit, isPro, currentPlan, purchasePackage,
-      chatLanguage, changeLanguage,
-      resetToFree 
+      chatLanguage, changeLanguage, resetToFree,
+      hasUsedTrial, isTrialActive, startPremiumTrial
     }}>
       {children}
     </PaywallContext.Provider>

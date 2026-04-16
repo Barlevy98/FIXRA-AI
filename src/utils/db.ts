@@ -50,7 +50,6 @@ export const getUserChatSessions = async (clerkToken: string, userId: string) =>
 // פונקציות חדשות עבור סטטוס משתמש (מדריך וכו')
 // ==========================================
 
-// בודקת אם המשתמש כבר אישר את תנאי השימוש
 export const getUserTosStatus = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
@@ -67,7 +66,6 @@ export const getUserTosStatus = async (clerkToken: string, userId: string) => {
   return data?.has_accepted_tos || false;
 };
 
-// מעדכנת בשרת שהמשתמש אישר את תנאי השימוש
 export const markTosAsAccepted = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
@@ -86,7 +84,6 @@ export const markTosAsAccepted = async (clerkToken: string, userId: string) => {
   return true;
 };
 
-// בודקת אם המשתמש כבר ראה את המדריך
 export const getUserTutorialStatus = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
@@ -95,7 +92,6 @@ export const getUserTutorialStatus = async (clerkToken: string, userId: string) 
     .eq('user_id', userId)
     .single();
 
-  // אם הפרופיל לא קיים עדיין (שגיאה PGRST116), זה אומר שזה משתמש חדש והוא בטוח לא ראה את המדריך
   if (error && error.code !== 'PGRST116') {
     console.error('Error fetching tutorial status:', error.message);
     return false;
@@ -104,7 +100,6 @@ export const getUserTutorialStatus = async (clerkToken: string, userId: string) 
   return data?.has_seen_tutorial || false;
 };
 
-// מעדכנת בשרת שהמשתמש סיים לראות את המדריך
 export const markTutorialAsSeen = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
@@ -131,7 +126,8 @@ export const getUserSubscriptionData = async (clerkToken: string, userId: string
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
     .from('user_profiles')
-    .select('message_count, max_messages, current_plan, is_pro, last_reset, daily_message_count, last_daily_reset') // <-- הוספנו פה את העמודות החדשות
+    // 🌟 הנה התיקון האמיתי: הוספנו את has_used_premium_trial ל-select! 🌟
+    .select('message_count, max_messages, current_plan, is_pro, last_reset, daily_message_count, last_daily_reset, has_used_premium_trial')
     .eq('user_id', userId)
     .single();
 
@@ -142,7 +138,6 @@ export const getUserSubscriptionData = async (clerkToken: string, userId: string
   return data;
 };
 
-// הפונקציה הזו גנרית אז היא יודעת לעדכן גם את היומי וגם את החודשי בלי שינויים נוספים
 export const updateSubscriptionData = async (clerkToken: string, userId: string, updates: any) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
@@ -155,11 +150,11 @@ export const updateSubscriptionData = async (clerkToken: string, userId: string,
   }
   return true;
 };
+
 // ==========================================
 // פונקציות תוכנית שותפים ומשפיענים (Affiliates)
 // ==========================================
 
-// משיכת נתוני השותף של המשתמש (קוד, מאזן וכו')
 export const getUserAffiliateData = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
@@ -175,11 +170,9 @@ export const getUserAffiliateData = async (clerkToken: string, userId: string) =
   return data;
 };
 
-// יצירת קוד הפניה ייחודי למשתמש
 export const createReferralCode = async (clerkToken: string, userId: string, customCode: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   
-  // קודם נוודא שהקוד הזה לא תפוס כבר על ידי מישהו אחר
   const { data: existing } = await supabase
     .from('user_profiles')
     .select('user_id')
@@ -190,7 +183,6 @@ export const createReferralCode = async (clerkToken: string, userId: string, cus
     return { success: false, error: 'Code already taken' };
   }
 
-  // אם פנוי, נעדכן את הפרופיל של המשתמש
   const { error } = await supabase
     .from('user_profiles')
     .upsert({ 
@@ -211,7 +203,6 @@ export const createReferralCode = async (clerkToken: string, userId: string, cus
 // פונקציות הגדרות משתמש (Settings)
 // ==========================================
 
-// מעדכנת את שפת הממשק הנבחרת של המשתמש בשרת
 export const updateUserLanguage = async (clerkToken: string, userId: string, languageId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
@@ -229,12 +220,10 @@ export const updateUserLanguage = async (clerkToken: string, userId: string, lan
   return true;
 };
 
-
 // ==========================================
 // פונקציות מועדפים (Bookmarks)
 // ==========================================
 
-// שמירת הודעה (פתרון) למועדפים
 export const saveBookmark = async (clerkToken: string, userId: string, title: string, messageData: any) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
@@ -242,7 +231,7 @@ export const saveBookmark = async (clerkToken: string, userId: string, title: st
     .insert({
       user_id: userId,
       title: title,
-      message_data: messageData // אנחנו שומרים את כל אובייקט ההודעה (JSON) כמו שהוא!
+      message_data: messageData 
     });
 
   if (error) {
@@ -252,7 +241,6 @@ export const saveBookmark = async (clerkToken: string, userId: string, title: st
   return true;
 };
 
-// משיכת כל המועדפים של המשתמש (הכי חדשים למעלה)
 export const getUserBookmarks = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
@@ -268,7 +256,6 @@ export const getUserBookmarks = async (clerkToken: string, userId: string) => {
   return data;
 };
 
-// מחיקת מועדף
 export const deleteBookmark = async (clerkToken: string, bookmarkId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
@@ -282,11 +269,11 @@ export const deleteBookmark = async (clerkToken: string, bookmarkId: string) => 
   }
   return true;
 };
+
 // ==========================================
 // פונקציות הגדרות מתקדמות (Advanced Settings)
 // ==========================================
 
-// משיכת העדפת הרטט של המשתמש (ברירת מחדל: מופעל)
 export const getUserHapticsPreference = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
@@ -297,14 +284,12 @@ export const getUserHapticsPreference = async (clerkToken: string, userId: strin
 
   if (error && error.code !== 'PGRST116') {
     console.error('Error fetching haptics preference:', error.message);
-    return true; // נחזיר True כברירת מחדל במקרה של שגיאה
+    return true; 
   }
   
-  // אם הערך לא קיים עדיין (null), נחזיר true
   return data?.haptics_enabled ?? true; 
 };
 
-// עדכון העדפת הרטט בענן
 export const updateUserHapticsPreference = async (clerkToken: string, userId: string, enabled: boolean) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
@@ -321,7 +306,7 @@ export const updateUserHapticsPreference = async (clerkToken: string, userId: st
   }
   return true;
 };
-// עדכון שם המשתמש (Gamer Tag / Full Name) בפרופיל
+
 export const updateUserName = async (clerkToken: string, userId: string, fullName: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
@@ -338,7 +323,7 @@ export const updateUserName = async (clerkToken: string, userId: string, fullNam
   }
   return true;
 };
-// מחיקת שיחת צ'אט מהשרת
+
 export const deleteChatSession = async (clerkToken: string, sessionId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase
@@ -353,7 +338,7 @@ export const deleteChatSession = async (clerkToken: string, sessionId: string) =
   
   return true;
 };
-// מחיקת כל שיחות הצ'אט של המשתמש מהשרת
+
 export const deleteAllUserChatSessions = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase

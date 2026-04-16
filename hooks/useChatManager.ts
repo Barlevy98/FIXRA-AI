@@ -5,7 +5,6 @@ import * as Haptics from 'expo-haptics';
 
 import { MessageType, ChatSession } from '../src/types';
 import { fetchGameWalkthrough } from '../src/services/aiService';
-// 🌟 הוספנו פה את deleteChatSession 🌟
 import { saveChatSession, getUserChatSessions, deleteChatSession } from '../src/utils/db';
 
 export function useChatManager(
@@ -35,18 +34,27 @@ export function useChatManager(
   }, [user]);
 
   useEffect(() => {
-    if (messages.length === 1 && messages[0].sender === 'bot' && messages[0].text !== greetingText) {
-      const updatedMessages = [{ ...messages[0], text: greetingText }];
-      setMessages(updatedMessages);
-      if (currentSessionId && sessions.some(s => s.id === currentSessionId)) {
-        setSessions(prev => {
-          const updated = prev.map(s => s.id === currentSessionId ? { ...s, messages: updatedMessages } : s);
-          AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updated)).catch(()=>{});
-          return updated;
-        });
+    if (messages.length === 1 && messages[0].sender === 'bot') {
+      const currentSession = sessions.find(s => s.id === currentSessionId);
+      const isGeneral = !currentSession || currentSession.category === 'General';
+      
+      const expectedText = isGeneral 
+        ? greetingText 
+        : (t.gameWelcome ? t.gameWelcome(currentSession.category) : greetingText);
+
+      if (messages[0].text !== expectedText) {
+        const updatedMessages = [{ ...messages[0], text: expectedText }];
+        setMessages(updatedMessages);
+        if (currentSessionId && currentSession) {
+          setSessions(prev => {
+            const updated = prev.map(s => s.id === currentSessionId ? { ...s, messages: updatedMessages } : s);
+            AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updated)).catch(()=>{});
+            return updated;
+          });
+        }
       }
     }
-  }, [greetingText, messages, currentSessionId, sessions]);
+  }, [greetingText, messages, currentSessionId, sessions, t]);
 
   const loadSessions = async () => {
     try {
@@ -57,7 +65,7 @@ export function useChatManager(
         const token = await getToken({ template: 'supabase' });
         if (token) {
           const serverSessions = await getUserChatSessions(token, user.id);
-          if (serverSessions && serverSessions.length > 0) {
+          if (serverSessions) {
             loadedSessions = serverSessions.map(s => ({
               id: s.id,
               title: s.title,
@@ -76,10 +84,15 @@ export function useChatManager(
         }
       }
       setSessions(loadedSessions);
-      if (loadedSessions.length > 0) {
-        await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(loadedSessions));
+      await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(loadedSessions));
+      
+      if (loadedSessions.length === 0) {
+        createNewSession();
+      } else {
+        const mostRecent = loadedSessions[0];
+        setCurrentSessionId(mostRecent.id);
+        setMessages(mostRecent.messages);
       }
-      createNewSession();
     } catch (e) {
       console.error('Load sessions error', e);
       createNewSession();
@@ -93,15 +106,43 @@ export function useChatManager(
     } catch (e) { console.error('Save sessions error', e); }
   };
 
-  const createNewSession = (onCreated?: () => void) => {
+  const createNewSession = (onCreated?: () => void, gameName?: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newId = Date.now().toString();
-    const initialMessage: MessageType = { id: '1', text: greetingText, sender: 'bot' };
+    
+    let initialText = greetingText;
+    let finalCategory = 'General';
+    let initialTitle = t.newChatName || 'New Chat';
+
+    if (gameName) {
+       initialText = t.gameWelcome ? t.gameWelcome(gameName) : `Welcome to your ${gameName} chat room!`;
+       finalCategory = gameName;
+       initialTitle = t.gameChatTitle ? t.gameChatTitle(gameName) : `New ${gameName} Chat`;
+    }
+
+    const initialMessage: MessageType = { id: '1', text: initialText, sender: 'bot' };
     setCurrentSessionId(newId);
     setMessages([initialMessage]);
-    if (!expandedFolders.includes('General')) {
-      setExpandedFolders(prev => [...prev, 'General']);
+    
+    if (!expandedFolders.includes(finalCategory)) {
+      setExpandedFolders(prev => [...prev, finalCategory]);
     }
+
+    if (gameName) {
+      const newSession: ChatSession = {
+        id: newId,
+        title: initialTitle,
+        category: finalCategory,
+        messages: [initialMessage],
+        updatedAt: Date.now()
+      };
+      setSessions(prev => {
+        const updated = [newSession, ...prev];
+        AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updated)).catch(()=>{});
+        return updated;
+      });
+    }
+
     if (onCreated) onCreated();
   };
 
@@ -115,7 +156,6 @@ export function useChatManager(
     }
   };
 
-  // 🌟 התיקון הגדול! הוספנו את המחיקה מהשרת 🌟
   const deleteSession = (sessionId: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(t.deleteAlert, t.deleteConfirm, [
@@ -123,21 +163,18 @@ export function useChatManager(
       { 
         text: t.delete, 
         style: 'destructive', 
-        onPress: async () => { // הפכנו ל-async כדי שנוכל לחכות לשרת
+        onPress: async () => { 
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           
-          // 1. מחיקה מהטלפון (מה שיש לך היום)
           const updatedSessions = sessions.filter(s => s.id !== sessionId);
           saveSessionsToStorage(updatedSessions);
           if (currentSessionId === sessionId) createNewSession();
 
-          // 2. מחיקה מ-Supabase!
           if (user?.id) {
             try {
               const token = await getToken({ template: 'supabase' });
               if (token) {
                 await deleteChatSession(token, sessionId);
-                console.log(`Session ${sessionId} deleted from server.`);
               }
             } catch (error) {
               console.error('Error deleting from server:', error);
@@ -154,7 +191,7 @@ export function useChatManager(
 
     let updatedSessions = [...sessions];
     let sessionIndex = updatedSessions.findIndex(s => s.id === currentSessionId);
-    let newTitle = t.newChatName;
+    let newTitle = t.newChatName || 'New Chat';
     let finalCategory = 'General';
     const userMessages = newMessages.filter(m => m.sender === 'user');
 
@@ -162,15 +199,16 @@ export function useChatManager(
       const s = updatedSessions[sessionIndex];
       newTitle = s.title;
       finalCategory = s.category;
-      if (userMessages.length === 1 && (s.title === t.newChatName || s.title.startsWith('Chat from') || s.title.startsWith('שיחה מ-'))) {
+      
+      if (userMessages.length === 1 && (s.title === (t.newChatName || 'New Chat') || s.title.startsWith('Chat from') || s.title.startsWith('שיחה מ-') || s.title.startsWith('New ') || s.title.startsWith("צ'אט "))) {
         const firstUserMsg = userMessages[0];
         if (firstUserMsg.text) {
           const words = firstUserMsg.text.trim().split(/\s+/);
           newTitle = words.slice(0, 4).join(' ') + (words.length > 4 ? '...' : '');
         } else if (firstUserMsg.mediaType === 'image') {
-          newTitle = '📷 Image Search';
+          newTitle = t.imageSearch || '📷 Image Search';
         } else if (firstUserMsg.mediaType === 'video') {
-          newTitle = '🎥 Video Search';
+          newTitle = t.videoSearch || '🎥 Video Search';
         }
       }
       if (newCategory && newCategory !== 'Unknown' && newCategory !== 'General') {
@@ -183,9 +221,9 @@ export function useChatManager(
           const words = firstUserMsg.text.trim().split(/\s+/);
           newTitle = words.slice(0, 4).join(' ') + (words.length > 4 ? '...' : '');
         } else if (firstUserMsg.mediaType === 'image') {
-          newTitle = '📷 Image Search';
+          newTitle = t.imageSearch || '📷 Image Search';
         } else if (firstUserMsg.mediaType === 'video') {
-          newTitle = '🎥 Video Search';
+          newTitle = t.videoSearch || '🎥 Video Search';
         }
       }
       if (newCategory && newCategory !== 'Unknown') finalCategory = newCategory;
@@ -246,8 +284,11 @@ export function useChatManager(
     updatedMsgs = [...updatedMsgs, { id: loadingId, sender: 'bot', isLoading: true }];
     updateCurrentSession(updatedMsgs);
 
-    // נשלח עם gemini-2.5-flash המקורי שלך!
-    const response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, messages, currentPlan);
+    // 🌟 הנה השינוי! אנחנו שולפים את ה-category מהחדר הנוכחי ושולחים ל-AI 🌟
+    const currentSession = sessions.find(s => s.id === currentSessionId);
+    const categoryToPass = currentSession?.category || 'General';
+
+    const response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, messages, currentPlan, categoryToPass);
     
     updatedMsgs = updatedMsgs.map(msg => msg.id === loadingId ? { id: loadingId, text: response.message, walkthroughData: response.walkthroughData, sender: 'bot' } : msg);
     updateCurrentSession(updatedMsgs, response.category);
