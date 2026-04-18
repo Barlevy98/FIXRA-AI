@@ -111,7 +111,7 @@ export default function GameLibraryModal({ visible, onClose, onSelectGame }: Gam
           {isSearching ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#00e5ff" />
-              <Text style={styles.loadingText}>Searching global database...</Text>
+              <Text style={styles.loadingText}>Searching games...</Text>
             </View>
           ) : (
             <FlatList
