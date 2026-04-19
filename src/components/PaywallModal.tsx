@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Animated, Easing, Dimensions, ActivityIndicator } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Animated, Easing, Dimensions, ActivityIndicator, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -186,9 +186,21 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 
               <Text style={styles.bottomFooterText}>Join 10,000 players already using Fixra</Text>
 
+              {/* --- תחילת הקישור שהוספנו --- */}
+              <TouchableOpacity onPress={() => Linking.openURL('https://quirky-match-61c.notion.site/FIXRA-Terms-of-Service-Privacy-Policy-34745f65405f80d2b137c2f4ddd7ae2e')}>
+                <Text style={{ color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginTop: 15, textDecorationLine: 'underline' }}>
+                  Terms of Service & Privacy Policy
+                </Text>
+              </TouchableOpacity>
+              {/* --- סוף הקישור שהוספנו --- */}
+
               <View style={{ height: 40 }} />
             </ScrollView>
           </SafeAreaView>
+
+             
+            
+          
         </LinearGradient>
       </View>
 
