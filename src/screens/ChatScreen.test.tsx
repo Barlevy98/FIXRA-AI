@@ -3,23 +3,105 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import ChatScreen from './ChatScreen';
 
 // ---------------------------------------------------------
-// 1. זיופים (Mocks) - מנטרלים את כל המערכות החיצוניות
+// 1. טיפול בטיימרים כדי למנוע זליגה ואזהרות בסוף הטסט
 // ---------------------------------------------------------
+beforeAll(() => {
+  jest.spyOn(global, 'setInterval').mockImplementation((() => {}) as any);
+  jest.spyOn(global, 'clearInterval').mockImplementation((() => {}) as any);
+});
+afterAll(() => {
+  jest.restoreAllMocks();
+});
 
-// מזייפים את ה-API של ה-AI כדי שלא נשלח באמת בקשות שעולות כסף
-import { fetchGameWalkthrough } from '../services/aiService';
-jest.mock('../services/aiService', () => ({
-  fetchGameWalkthrough: jest.fn(() => Promise.resolve({
-    message: 'This is a mock AI answer',
-    isError: false,
-    category: 'General'
-  }))
+// ---------------------------------------------------------
+// 2. זיוף לוגיקת הצ'אט (useChatManager)
+// ---------------------------------------------------------
+const mockSendMessage = jest.fn(() => Promise.resolve(true));
+
+jest.mock('../../hooks/useChatManager', () => ({
+  __esModule: true,
+  useChatManager: () => ({
+    messages: [{ id: 'greeting', text: 'Hello Bar!', sender: 'bot' }],
+    groupedSessions: {},
+    expandedFolders: {},
+    currentSessionId: 'session_1',
+    sendMessage: mockSendMessage,
+    createNewSession: jest.fn(),
+    switchSession: jest.fn(),
+    deleteSession: jest.fn(),
+    toggleFolder: jest.fn(),
+    handleRating: jest.fn()
+  })
 }));
 
-// מזייפים את נתוני המשתמש וההרשאות
+// ---------------------------------------------------------
+// 3. התיקון הקריטי: זיוף INLINE מוחלט (ללא משתני עזר שיכולים ללכת לאיבוד!)
+// ---------------------------------------------------------
+jest.mock('expo-linear-gradient', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    LinearGradient: ({ children }: any) => React.createElement(React.Fragment, null, children)
+  };
+});
+
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+    SafeAreaView: ({ children }: any) => React.createElement(React.Fragment, null, children)
+  };
+});
+
+jest.mock('../components/MessageBubble', () => {
+  const React = require('react');
+  const { Text, View } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ msg }: any) => React.createElement(View, null, React.createElement(Text, null, msg.text))
+  };
+});
+
+jest.mock('../components/ChatInputArea', () => {
+  const React = require('react');
+  const { TextInput, View, TouchableOpacity } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ inputText, setInputText, onSendMessage, placeholder }: any) => 
+      React.createElement(View, null, [
+        React.createElement(TextInput, { 
+          key: 'input', 
+          placeholder: placeholder, 
+          value: inputText, 
+          onChangeText: setInputText 
+        }),
+        React.createElement(TouchableOpacity, { 
+          key: 'btn', 
+          testID: 'send-button', 
+          onPress: onSendMessage 
+        })
+      ])
+  };
+});
+
+// זיוף ישיר (Inline) של כל המודלים כדי ש-Jest לא ייחנק מה-Hoisting
+jest.mock('../components/ChatSideMenu', () => ({ __esModule: true, default: () => null }));
+jest.mock('../components/GameLibraryModal', () => ({ __esModule: true, default: () => null }));
+jest.mock('../components/PaywallModal', () => ({ __esModule: true, default: () => null }));
+jest.mock('../components/ProfileModal', () => ({ __esModule: true, default: () => null }));
+jest.mock('../components/TutorialModal', () => ({ __esModule: true, default: () => null }));
+jest.mock('../components/TermsModal', () => ({ __esModule: true, default: () => null }));
+jest.mock('./SettingsScreen', () => ({ __esModule: true, default: () => null }));
+jest.mock('./FavoritesScreen', () => ({ __esModule: true, default: () => null }));
+jest.mock('../components/CommunityModal', () => ({ __esModule: true, default: () => null }));
+
+// ---------------------------------------------------------
+// 4. סביבה, משתמש ותרגומים
+// ---------------------------------------------------------
 jest.mock('@clerk/clerk-expo', () => ({
-  useAuth: () => ({ getToken: jest.fn(() => Promise.resolve('mock-token')) }),
-  useUser: () => ({ user: { id: 'user_123', firstName: 'Bar' } })
+  useAuth: () => ({ getToken: jest.fn(() => Promise.resolve('mock-token')), isLoaded: true }),
+  useUser: () => ({ user: { id: 'user_123', firstName: 'Bar' }, isLoaded: true })
 }));
 
 jest.mock('../context/PaywallContext', () => ({
@@ -27,39 +109,37 @@ jest.mock('../context/PaywallContext', () => ({
     hasReachedLimit: false,
     incrementMessageCount: jest.fn(),
     chatLanguage: 'en',
-    currentPlan: 'free'
+    currentPlan: 'free',
+    hasUsedTrial: false,
+    isTrialActive: false,
+    startPremiumTrial: jest.fn()
   })
 }));
 
-// מזייפים את התרגום כדי שנדע בדיוק איזה טקסט לחפש
 jest.mock('../utils/translations', () => ({
   getTranslation: () => ({
     greeting: (name: string) => `Hello ${name}!`,
     placeholder: 'Type your message...',
-    loading: 'Loading...'
+    lockedPlaceholder: 'Locked...',
   })
 }));
 
-// מזייפים את שאר הספריות של הטלפון
 jest.mock('@react-native-async-storage/async-storage', () => require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 
-// 🌟 הנה התיקון: זיוף מלא ומושלם של כל פונקציות המסד נתונים!
 jest.mock('../utils/db', () => ({
-  getUserChatSessions: jest.fn(() => Promise.resolve([])),
-  saveChatSession: jest.fn(() => Promise.resolve(true)),
   getUserTosStatus: jest.fn(() => Promise.resolve(true)),
   getUserTutorialStatus: jest.fn(() => Promise.resolve(true)),
   markTutorialAsSeen: jest.fn(() => Promise.resolve(true)),
   saveBookmark: jest.fn(() => Promise.resolve(true)),
-  getUserBookmarks: jest.fn(() => Promise.resolve([]))
+  getUserBookmarks: jest.fn(() => Promise.resolve([])),
+  getUserChatSessions: jest.fn(() => Promise.resolve([])),
+  saveChatSession: jest.fn(() => Promise.resolve(true))
 }));
 
-jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
-jest.mock('expo-linear-gradient', () => ({ LinearGradient: 'LinearGradient' }));
+jest.mock('@expo/vector-icons', () => ({ __esModule: true, Ionicons: () => null }));
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
   notificationAsync: jest.fn(),
-  selectionAsync: jest.fn(),
   ImpactFeedbackStyle: { Medium: 'medium', Light: 'light' },
   NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' }
 }));
@@ -67,86 +147,47 @@ jest.mock('expo-image-picker', () => ({}));
 jest.mock('expo-video-thumbnails', () => ({}));
 jest.mock('expo-file-system/legacy', () => ({}));
 
-// מזייפים את המודלים כדי שלא יפריעו לרינדור המסך ולא יזרקו שגיאות אנימציה
-jest.mock('../components/PaywallModal', () => 'PaywallModal');
-jest.mock('../components/ProfileModal', () => 'ProfileModal');
-jest.mock('../components/TutorialModal', () => 'TutorialModal');
-jest.mock('../components/TermsModal', () => 'TermsModal');
-jest.mock('./SettingsScreen', () => 'SettingsScreen');
-jest.mock('./FavoritesScreen', () => 'FavoritesScreen');
-jest.mock('../components/TypingIndicator', () => 'TypingIndicator');
-jest.mock('../components/CommunityModal', () => 'CommunityModal');
-
-
-// --- משתיק אזהרות רעש של React ---
 const originalError = console.error;
 beforeAll(() => {
   console.error = (...args) => {
-    // אם זו אזהרת act של טיימרים ברקע - פשוט תתעלם ממנה
-    if (/was not wrapped in act/.test(args[0])) {
-      return; 
-    }
-    // אם זו שגיאה אמיתית - תדפיס אותה כרגיל
+    if (/was not wrapped in act/.test(args[0])) return; 
     originalError.call(console, ...args);
   };
 });
-
 afterAll(() => {
-  // מחזירים את המצב לקדמותו בסוף הבדיקות
   console.error = originalError;
 });
 
 // ---------------------------------------------------------
-// 2. תסריטי הבדיקה האמיתיים!
+// 5. הבדיקות 
 // ---------------------------------------------------------
 describe('QA: ChatScreen Component', () => {
 
-  // טסט 1: האם המסך עולה בלי לקרוס ומציג את הודעת הפתיחה?
   it('Should render the screen and display the greeting message', async () => {
-    const { getByText } = render(<ChatScreen />);
-    
-    await waitFor(() => {
-      // בודקים שרואים את הברכה עם השם שזייפנו למעלה ('Bar')
-      expect(getByText('Hello Bar!')).toBeTruthy();
-    });
+    const { findByText } = render(<ChatScreen />);
+    expect(await findByText('Hello Bar!')).toBeTruthy();
   });
 
-  // טסט 2: האם ההקלדה עובדת והסטייט מתעדכן?
   it('Should update the input field when user types a message', async () => {
-    const { getByPlaceholderText } = render(<ChatScreen />);
+    const { findByPlaceholderText } = render(<ChatScreen />);
     
-    // מוצאים את שדה הטקסט לפי הפלייסחולדר שזייפנו
-    const inputField = getByPlaceholderText('Type your message...');
-
-    // מדמים אצבע שמקלידה משהו
+    const inputField = await findByPlaceholderText('Type your message...');
+    
     fireEvent.changeText(inputField, 'How to beat the final boss?');
-
-    // בודקים שהטקסט באמת נשמר בתוך השדה
     expect(inputField.props.value).toBe('How to beat the final boss?');
   });
 
-  // טסט 3: הדבר האמיתי - האם שלחנו את המידע הנכון לשרת כשלחצנו Send?
-  it('Should send the exact typed message to the AI service', async () => {
-    const { getByPlaceholderText, getByTestId } = render(<ChatScreen />);
+  it('Should send the exact typed message to the Chat Manager', async () => {
+    const { findByPlaceholderText, findByTestId } = render(<ChatScreen />);
     
-    // 1. מקלידים טקסט
-    const inputField = getByPlaceholderText('Type your message...');
+    const inputField = await findByPlaceholderText('Type your message...');
     fireEvent.changeText(inputField, 'Where is the secret sword?');
 
-    // 2. מוצאים את כפתור השליחה (לפי ה-testID שהוספנו) ולוחצים עליו
-    const sendButton = getByTestId('send-button');
+    const sendButton = await findByTestId('send-button');
     fireEvent.press(sendButton);
 
-    // 3. הבדיקה הקריטית: האם הפונקציה fetchGameWalkthrough הופעלה,
-    // והאם המשתנה הראשון שעבר אליה הוא אכן הטקסט שהקלדנו!
     await waitFor(() => {
-      expect(fetchGameWalkthrough).toHaveBeenCalledWith(
-        'Where is the secret sword?', 
-        null,  // אין תמונה
-        'en',  // שפה
-        expect.any(Array), // היסטוריית שיחה (מערך)
-        'free' // סוג מנוי
-      );
+      expect(mockSendMessage).toHaveBeenCalledWith('Where is the secret sword?', null);
     });
   });
 

@@ -1,6 +1,5 @@
 import { renderHook, act, waitFor } from '@testing-library/react-native';
 import { useChatManager } from './useChatManager';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 import * as aiService from '../src/services/aiService';
 import * as db from '../src/utils/db';
@@ -8,8 +7,8 @@ import * as Haptics from 'expo-haptics';
 
 // --- זיוף (Mocking) של שירותים חיצוניים ---
 jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: jest.fn(),
-  setItem: jest.fn(),
+  getItem: jest.fn(() => Promise.resolve(null)),
+  setItem: jest.fn(() => Promise.resolve()),
 }));
 
 jest.mock('react-native', () => ({
@@ -77,7 +76,6 @@ describe('useChatManager', () => {
       useChatManager(mockUser, mockGetToken, 'English', 'Free', mockT, greetingText)
     );
 
-    // 🌟 התיקון: אנחנו מבקשים מ-Jest לחכות עד שהצ'אט מוכן לחלוטין ויש לו ID!
     await waitFor(() => {
       expect(result.current.currentSessionId).not.toBeNull();
       expect(result.current.messages.length).toBe(1);
@@ -87,7 +85,6 @@ describe('useChatManager', () => {
       await result.current.sendMessage('How to beat the final boss?', null);
     });
 
-    //  לא תהיה התנגשות
     expect(result.current.messages.length).toBe(3); 
     expect(result.current.messages[1].text).toBe('How to beat the final boss?');
     expect(result.current.messages[1].sender).toBe('user');
@@ -115,10 +112,8 @@ describe('useChatManager', () => {
       result.current.deleteSession(sessionIdToDelete);
     });
 
-    // מוודא שהוקפצה התראה
     expect(Alert.alert).toHaveBeenCalled();
 
-    // מדמה לחיצה על כפתור המחיקה האדום בהתראה
     const alertArgs = (Alert.alert as jest.Mock).mock.calls[0];
     const deleteButton = alertArgs[2].find((btn: any) => btn.style === 'destructive');
     
@@ -126,7 +121,6 @@ describe('useChatManager', () => {
       await deleteButton.onPress();
     });
 
-    // מוודא שפונקציית המחיקה מול Supabase הופעלה
     expect(db.deleteChatSession).toHaveBeenCalledWith('fake-token', sessionIdToDelete);
   });
 

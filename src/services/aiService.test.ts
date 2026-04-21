@@ -1,102 +1,69 @@
-// 1. הגדרת המוקים - Jest מעלה אותם אוטומטית למעלה
-jest.mock('@google/generative-ai', () => {
-  const mSendMessage = jest.fn();
-  const mStartChat = jest.fn(() => ({ sendMessage: mSendMessage }));
-  const mGetGenerativeModel = jest.fn(() => ({ startChat: mStartChat }));
-  
-  return {
-    GoogleGenerativeAI: jest.fn(() => ({
-      getGenerativeModel: mGetGenerativeModel,
-    })),
-  };
-});
+import { getTranslation } from '../utils/translations';
 
+// מזייפים את קובץ התרגומים
 jest.mock('../utils/translations', () => ({
   getTranslation: jest.fn(),
 }));
 
+// מזייפים את פקודת ה-fetch המובנית של ג'אווה-סקריפט
 global.fetch = jest.fn();
 
-// 2. הגדרת מפתחות הדמה *לפני* הטעינה של הקובץ
-process.env.EXPO_PUBLIC_GEMINI_API_KEY = 'dummy-gemini-key';
-process.env.EXPO_PUBLIC_YOUTUBE_API_KEY = 'dummy-youtube-key';
-
-// 3. שימוש ב-require כדי למנוע את באג ההקפצה (Hoisting)
-const { fetchGameWalkthrough } = require('./aiService');
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getTranslation } from '../utils/translations';
-
-describe('aiService - fetchGameWalkthrough', () => {
-  let mockSendMessage: jest.Mock;
+describe('QA: aiService - fetchGameWalkthrough (Backend Version)', () => {
+  let fetchGameWalkthrough: any;
 
   beforeAll(() => {
-    const genAI = new GoogleGenerativeAI('dummy-key');
-    const model = genAI.getGenerativeModel({ model: 'dummy' });
-    const chat = model.startChat({ history: [] });
-    mockSendMessage = chat.sendMessage as jest.Mock;
+    // 🌟 התיקון הקריטי: מגדירים את המשתנים *לפני* שטוענים את הקובץ לזיכרון
+    // זה מונע מ-Jest לטעון את הקובץ לפני שיש לו את הכתובת
+    process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://mock-supabase.com';
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'mock-key';
+    
+    // עכשיו בטוח לטעון את פונקציית השירות
+    fetchGameWalkthrough = require('./aiService').fetchGameWalkthrough;
   });
 
   beforeEach(() => {
     jest.clearAllMocks();
     (getTranslation as jest.Mock).mockReturnValue({
-      aiError: 'An error occurred. Don\'t worry, your credit was not used.'
+      aiError: 'An error occurred while connecting to the server.'
     });
   });
 
-  it('1. Returns successful response and exactly 1 link for a FREE user', async () => {
-    const fakeAIResponse = {
+  it('1. Returns successful response from the Edge Function', async () => {
+    // זה ה-JSON שאנחנו מצפים שהשרת שלכם יחזיר
+    const mockServerResponse = {
       message: "Here is how to beat the boss.",
       category: "Elden Ring",
-      youtubeQuery: "Elden Ring boss guide",
-      wikiQuery: "Elden Ring boss wiki"
+      walkthroughData: { youtube: { videoId: '123', title: 'Guide' } },
+      isError: false
     };
-    mockSendMessage.mockResolvedValue({ response: { text: () => JSON.stringify(fakeAIResponse) } });
+
     (global.fetch as jest.Mock).mockResolvedValue({
-      json: jest.fn().mockResolvedValue({
-        items: [{ id: { videoId: '123' }, snippet: { title: 'Guide', thumbnails: { high: { url: 'url' } } } }]
-      })
+      ok: true,
+      json: jest.fn().mockResolvedValue(mockServerResponse)
     });
 
-    const result = await fetchGameWalkthrough('help me', null, 'English', [], 'Free');
+    const result = await fetchGameWalkthrough('help me', null, 'English', [], 'Free', 'General');
 
     expect(result.isError).toBe(false);
     expect(result.message).toBe("Here is how to beat the boss.");
-    expect(result.category).toBe("Elden Ring");
-    expect(Object.keys(result.walkthroughData || {}).length).toBe(1);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    
+    // מוודאים שהטלפון אכן פנה לכתובת הנכונה של השרת
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://mock-supabase.com/functions/v1/chat',
+      expect.any(Object)
+    );
   });
 
-  it('2. Returns multiple links for a PREMIUM user', async () => {
-    const fakeAIResponse = {
-      message: "Premium guide.",
-      category: "GTA V",
-      youtubeQuery: "GTA V guide",
-      wikiQuery: "GTA V wiki",
-      ignQuery: "GTA V ign"
-    };
-    mockSendMessage.mockResolvedValue({ response: { text: () => JSON.stringify(fakeAIResponse) } });
+  it('2. Handles Server Errors (500) gracefully and returns isError flag', async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
-      json: jest.fn().mockResolvedValue({
-        items: [{ id: { videoId: '456' }, snippet: { title: 'Premium Video', thumbnails: { high: { url: 'url' } } } }]
-      })
+      ok: false,
+      status: 500
     });
 
-    const result = await fetchGameWalkthrough('help me', null, 'English', [], 'PREMIUM');
-
-    expect(result.isError).toBe(false);
-    expect(Object.keys(result.walkthroughData || {}).length).toBe(3);
-  });
-
-  it('3. Handles API Errors gracefully and returns isError flag', async () => {
-    mockSendMessage.mockRejectedValue(new Error('503 Service Unavailable'));
-    const result = await fetchGameWalkthrough('help me', null, 'English', [], 'Free');
+    const result = await fetchGameWalkthrough('help me', null, 'English', [], 'Free', 'General');
+    
     expect(result.isError).toBe(true);
-    expect(result.message).toBe("An error occurred. Don't worry, your credit was not used.");
-  });
-
-  it('4. Handles invalid JSON response from AI gracefully', async () => {
-    mockSendMessage.mockResolvedValue({ response: { text: () => "I am an AI and I forgot how to JSON." } });
-    const result = await fetchGameWalkthrough('help me', null, 'English', [], 'Free');
-    expect(result.isError).toBe(true);
-    expect(result.category).toBe("General");
+    expect(result.message).toBe("An error occurred while connecting to the server.");
   });
 });
