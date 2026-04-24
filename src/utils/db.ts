@@ -353,3 +353,25 @@ export const deleteAllUserChatSessions = async (clerkToken: string, userId: stri
   
   return true;
 };
+// 🌟 פונקציה לשליחת דיווח על תוכן ל-Supabase
+export async function reportMessageToCloud(token: string, userId: string, messageId: string, messageText: string, reason: string) {
+  try {
+    const supabase = getAuthenticatedSupabase(token);
+    const { error } = await supabase
+      .from('reported_messages')
+      .insert([
+        { 
+          user_id: userId, 
+          message_id: messageId, 
+          message_text: messageText, 
+          reason: reason 
+        }
+      ]);
+      
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error("Error sending report:", err);
+    return false;
+  }
+}

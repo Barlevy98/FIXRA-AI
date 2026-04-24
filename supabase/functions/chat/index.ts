@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { GoogleGenerativeAI } from "npm:@google/generative-ai"
+import { createClient } from "npm:@supabase/supabase-js"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,43 +24,113 @@ interface AIResponseJSON {
 const safeString = (val: any) => typeof val === 'string' ? val : '';
 const safeNumber = (val: any) => typeof val === 'number' ? val : 0;
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+const youtubeCache = new Map<string, any>();
+
+function safeParseJSON(str: string): any {
+  try { return JSON.parse(str); } catch(e) {}
+  const match = str.match(/\{[\s\S]*\}/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch(e) {}
   }
+  throw new Error("FATAL_JSON_PARSE: AI returned invalid JSON format.");
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  const reqStartTime = Date.now();
 
   try {
-    const { userText, media, language, previousMessages, userPlan, gameCategory } = await req.json()
+    const { userText, media, language, previousMessages, userPlan, gameCategory, userId } = await req.json()
 
     const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
     const YOUTUBE_API_KEY = Deno.env.get('YOUTUBE_API_KEY');
     const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY');
+    
+    // משיכת מפתחות השרת לטובת אימות מאובטח
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!GEMINI_API_KEY || !YOUTUBE_API_KEY || !GROQ_API_KEY) {
-      throw new Error("Missing API Keys in server environment.");
-    }
+    if (!GEMINI_API_KEY || !YOUTUBE_API_KEY || !GROQ_API_KEY) throw new Error("Missing API Keys");
 
     const hasMedia = media && media.base64 && (typeof media.base64 === 'string' || media.base64.length > 0);
 
+    // ==========================================
+    // 🛡️ ספרינט 1: אימות Premium והגבלת קצב (Rate Limiting)
+    // ==========================================
+    let serverValidatedPlan = userPlan; 
+    let isActuallyPro = false;
+    
+    if (userId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+      // יצירת חיבור מאובטח למסד הנתונים
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      
+      const { data: profile, error } = await supabase
+        .from('user_profiles')
+        .select('current_plan, is_pro, daily_message_count, max_messages, last_daily_reset, message_count')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+         console.warn(`[Supabase Fetch Error] User ${userId}: ${error.message}`);
+      }
+
+      if (profile) {
+        serverValidatedPlan = profile.current_plan;
+        isActuallyPro = profile.is_pro || serverValidatedPlan?.startsWith('PRO') || serverValidatedPlan === 'PREMIUM';
+        
+        const now = Date.now();
+        const oneDayMs = 24 * 60 * 60 * 1000;
+        let currentCount = profile.daily_message_count || 0;
+        let lastReset = profile.last_daily_reset || 0;
+
+        // איפוס יומי
+        if (now - lastReset >= oneDayMs) {
+          currentCount = 0;
+          lastReset = now;
+        }
+
+        // הגבלת קצב: 200 הודעות לפרו, 20 הודעות לחינמי
+        const limit = profile.max_messages || (isActuallyPro ? 200 : 20);
+
+        // אם המשתמש חרג, מחזירים הודעת Rate Limit
+        if (currentCount >= limit) {
+          console.warn(`[RATE LIMIT] User ${userId} blocked. Count: ${currentCount}/${limit}`);
+          return new Response(JSON.stringify({
+            isError: true,
+            errorType: "rate_limit", 
+            message: "מכסת ההודעות היומית שלך הסתיימה 🛑. שדרג לפרימיום כדי להמשיך לשוחח עם הסוכן ללא הגבלה!",
+            category: gameCategory || 'General'
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // מעדכנים את הספירה
+        await supabase.from('user_profiles').update({
+          daily_message_count: currentCount + 1,
+          last_daily_reset: lastReset,
+          message_count: (profile.message_count || 0) + 1
+        }).eq('user_id', userId);
+      }
+    }
+    // ==========================================
+
     const systemInstruction = `You are an ELITE gaming AI assistant and video analysis expert.
-CRITICAL JSON RULES: Output ONLY valid raw JSON. No markdown, no backticks.
+CRITICAL JSON RULES: Output ONLY valid raw JSON. No markdown.
 ANTI-HALLUCINATION & ELITE GAMER LOGIC:
 0. YOU ARE A GAMING ASSISTANT ONLY. If the user asks about ANYTHING outside of video games (e.g., flights, cooking, politics, coding, math, general info), you MUST reject it.
    To reject, return exactly this JSON and nothing else:
    {
-     "message": "עצור! 🛑 נראה שניסית לפתוח Side Quest שאני לא לוקח. אני כאן רק בשביל ה-Loot, ה-Walkthroughs והניצחון. אני סוכן AI שמתמחה אך ורק בעזרה במשחקים – בוא נחזור ל-Main Quest שלנו. מה המשימה הבאה שלך במשחק?",
+     "message": "אני עוזר AI שמתמחה במשחקי וידאו בלבד 🎮. אשמח לעזור לך עם מדריכים, משימות, בוסים או כל דבר שקשור למשחק שלך!",
      "category": "Unknown"
    }
 1. Deduce the exact mission name if the user gives a number.
-2. NEVER ask the user what mission they are on if you can guess.
-3. 'quickFixTitle' MUST be the exact mission/boss.
-4. 'taskSummary' MUST be highly specific actionable gameplay tip.
-5. NEVER return both 'message' and 'taskSummary'. One MUST be empty.
+2. 'quickFixTitle' MUST be the exact mission/boss.
+3. 'taskSummary' MUST be highly specific actionable gameplay tip.
+4. NEVER return both 'message' and 'taskSummary'. One MUST be empty.
 
 CRITICAL LANGUAGE RULES:
 - The fields 'quickFixTitle', 'message', and 'taskSummary' MUST BE IN: ${language || 'Hebrew'}.
 - ABSOLUTE OVERRIDE: The search query fields ('youtubeQuery', 'wikiQuery', 'ignQuery', 'polygonQuery', 'mapgenieQuery', 'fextralifeQuery') MUST STRICTLY BE IN 100% PURE ENGLISH. 
-- You MUST translate the Game Name, Boss Name, and Mission Name to English for the queries, even if the user asked in Hebrew. DO NOT output any Hebrew letters inside the query fields.
+- You MUST translate the Game Name, Boss Name, and Mission Name to English for the queries.
 
 JSON RESPONSE FORMAT:
 {
@@ -79,90 +150,77 @@ JSON RESPONSE FORMAT:
     let history = (previousMessages || []).filter((msg: any) => msg.text && !msg.isLoading).slice(-6);
     let rawParsed: any;
     let responseText = "";
+    let providerUsed = "";
 
+    // SMART ROUTING (משתמש בסטטוס המאומת)
     if (hasMedia) {
-      console.log("Routing to Gemini 2.5 Flash (Media detected)");
+      providerUsed = "Gemini-2.5-Flash (Media)";
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction });
       
-      let geminiHistory = history.map((msg: any) => ({
-        role: msg.sender === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.text as string }]
-      }));
+      let geminiHistory = history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'model', parts: [{ text: msg.text as string }] }));
       while (geminiHistory.length > 0 && geminiHistory[0].role === 'model') geminiHistory.shift();
 
       const chat = model.startChat({ history: geminiHistory });
       const promptParts: any[] = [];
+      if (media.type === 'image') promptParts.push({ inlineData: { data: media.base64, mimeType: 'image/jpeg' } });
+      else media.base64.forEach((img: string) => promptParts.push({ inlineData: { data: img, mimeType: 'image/jpeg' } }));
       
-      if (media.type === 'image' && typeof media.base64 === 'string') {
-        promptParts.push({ inlineData: { data: media.base64, mimeType: 'image/jpeg' } });
-        promptParts.push("Analyze this game screenshot carefully.");
-      } else if (media.type === 'video' && Array.isArray(media.base64)) {
-        media.base64.forEach((img: string) => promptParts.push({ inlineData: { data: img, mimeType: 'image/jpeg' } }));
-        promptParts.push("Analyze these sequential video frames for gameplay flow.");
-      }
-
       promptParts.push(`User query: ${userText || 'Help me with this part of the game.'}`);
       const result = await chat.sendMessage(promptParts);
       responseText = result.response.text();
 
+    } else if (isActuallyPro) { 
+       providerUsed = "Gemini-2.5-Flash-Lite (Premium)";
+       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', systemInstruction });
+       let geminiHistory = history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'model', parts: [{ text: msg.text as string }] }));
+       while (geminiHistory.length > 0 && geminiHistory[0].role === 'model') geminiHistory.shift();
+       const chat = model.startChat({ history: geminiHistory });
+       const result = await chat.sendMessage([`User query: ${userText}`]);
+       responseText = result.response.text();
     } else {
-      console.log("Routing to Groq (Text only)");
-      try {
-        const groqMessages = [{ role: "system", content: systemInstruction }];
-        history.forEach((msg: any) => {
-          groqMessages.push({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text });
-        });
-        groqMessages.push({ role: "user", content: `User query: ${userText}` });
+      let groqSuccess = false;
+      const groqMessages = [{ role: "system", content: systemInstruction }, ...history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text })), { role: "user", content: `User query: ${userText}` }];
 
-        const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile", // המודל החדש והמהיר ביותר שלהם
-            messages: groqMessages,
-            response_format: { type: "json_object" },
-            temperature: 0.2
-          })
-        });
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: groqMessages, response_format: { type: "json_object" }, temperature: 0.2 }),
+            signal: AbortSignal.timeout(8000) 
+          });
 
-        // התיקון שלנו: הדפסת השגיאה הספציפית מ-Groq
-        if (!groqRes.ok) {
-          const groqErrorBody = await groqRes.text();
-          console.error("GROQ SPECIFIC ERROR:", groqErrorBody);
-          throw new Error("Groq API failed");
+          if (!groqRes.ok) throw new Error(`Groq Status: ${groqRes.status}`);
+          const groqData = await groqRes.json();
+          responseText = groqData.choices[0].message.content;
+          
+          safeParseJSON(responseText);
+          
+          providerUsed = `Groq (Attempt ${attempt})`;
+          groqSuccess = true;
+          break; 
+
+        } catch (e: any) {
+          console.warn(`[Groq Warning] Attempt ${attempt} failed: ${e.message}`);
+          if (attempt === 2) console.error("Groq totally failed. Falling back.");
         }
-        
-        const groqData = await groqRes.json();
-        responseText = groqData.choices[0].message.content;
+      }
 
-      } catch (groqError) {
-        console.error("Groq Failed, falling back to Gemini 2.5 Flash-Lite:", groqError);
+      if (!groqSuccess) {
+        providerUsed = "Gemini-2.5-Flash-Lite (Fallback)";
         const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
         const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', systemInstruction });
-        
-        let fallbackHistory = history.map((msg: any) => ({
-          role: msg.sender === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.text as string }]
-        }));
+        let fallbackHistory = history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'model', parts: [{ text: msg.text as string }] }));
         while (fallbackHistory.length > 0 && fallbackHistory[0].role === 'model') fallbackHistory.shift();
-
         const chat = fallbackModel.startChat({ history: fallbackHistory });
         const result = await chat.sendMessage([`User query: ${userText}`]);
         responseText = result.response.text();
       }
     }
 
-    try {
-      rawParsed = JSON.parse(responseText);
-    } catch (e) {
-      const firstBrace = responseText.indexOf('{');
-      const lastBrace = responseText.lastIndexOf('}');
-      if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
-        throw new Error("FATAL_JSON_BOUNDS");
-      }
-      rawParsed = JSON.parse(responseText.substring(firstBrace, lastBrace + 1));
-    }
+    rawParsed = safeParseJSON(responseText);
 
     const aiResponseJSON: AIResponseJSON = {
       message: safeString(rawParsed.message),
@@ -174,28 +232,31 @@ JSON RESPONSE FORMAT:
       polygonQuery: safeString(rawParsed.polygonQuery),
       mapgenieQuery: safeString(rawParsed.mapgenieQuery),
       fextralifeQuery: safeString(rawParsed.fextralifeQuery),
-      confidence: safeNumber(rawParsed.confidence),
       category: safeString(rawParsed.category) || 'General',
     };
 
     let allAvailableLinks: any[] = [];
     
-    if (!aiResponseJSON.message?.includes("עצור! 🛑")) {
+    if (!aiResponseJSON.message?.includes("🎮")) {
       const rawYtQ = aiResponseJSON.youtubeQuery || '';
       if (rawYtQ && YOUTUBE_API_KEY) {
-          try {
-            const ytRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=4&q=${encodeURIComponent(rawYtQ)}&type=video&key=${YOUTUBE_API_KEY}`);
-            if (ytRes.ok) {
-              const ytJson = await ytRes.json();
-              if (ytJson.items && ytJson.items.length > 0) {
-                  let bestVideo = ytJson.items[0];
-                  allAvailableLinks.push({ 
-                      type: 'youtube', 
-                      data: { videoId: bestVideo.id.videoId, title: bestVideo.snippet.title, thumbnail: bestVideo.snippet.thumbnails.high.url } 
-                  });
-              }
+          if (youtubeCache.has(rawYtQ)) {
+             allAvailableLinks.push(youtubeCache.get(rawYtQ));
+          } else {
+             try {
+                const ytRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=2&q=${encodeURIComponent(rawYtQ)}&type=video&key=${YOUTUBE_API_KEY}`, { signal: AbortSignal.timeout(5000) });
+                if (ytRes.ok) {
+                  const ytJson = await ytRes.json();
+                  if (ytJson.items && ytJson.items.length > 0) {
+                      let bestVideo = ytJson.items[0];
+                      const linkData = { type: 'youtube', data: { videoId: bestVideo.id.videoId, title: bestVideo.snippet.title, thumbnail: bestVideo.snippet.thumbnails.high.url } };
+                      allAvailableLinks.push(linkData);
+                      youtubeCache.set(rawYtQ, linkData); 
+                      if (youtubeCache.size > 200) youtubeCache.clear(); 
+                  }
+                }
+             } catch(e: any) { console.error("YouTube Error:", e.message); }
           }
-          } catch(e: any) { console.error("YouTube Error on Server:", e.message); }
       }
 
       if (aiResponseJSON.wikiQuery) allAvailableLinks.push({ type: 'wiki', data: { title: "📖 Read Full Wiki Guide", url: `https://www.google.com/search?q=${encodeURIComponent('site:fandom.com ' + aiResponseJSON.wikiQuery)}&udm=14`, thumbnail: "https://logospng.org/download/fandom/fandom-256.png" } });
@@ -205,7 +266,7 @@ JSON RESPONSE FORMAT:
       if (aiResponseJSON.fextralifeQuery) allAvailableLinks.push({ type: 'fextralife', data: { title: "⚔️ Fextralife Boss Guide", url: `https://www.google.com/search?q=${encodeURIComponent('site:fextralife.com ' + aiResponseJSON.fextralifeQuery)}&udm=14`, thumbnail: "https://fextralife.com/wp-content/uploads/2021/05/fextralife-logo-150x150.png" } });
     }
 
-    let allowedLinksCount = userPlan === 'PREMIUM' ? 10 : (userPlan?.startsWith('PRO') ? 3 : 1);
+    let allowedLinksCount = serverValidatedPlan === 'PREMIUM' ? 10 : (serverValidatedPlan?.startsWith('PRO') ? 3 : 1);
     const finalLinks = allAvailableLinks.slice(0, allowedLinksCount);
 
     let walkthroughData: any = {};
@@ -216,24 +277,19 @@ JSON RESPONSE FORMAT:
 
     const finalMessageText = [aiResponseJSON.message, formattedSummary].filter(text => text && text.trim().length > 0).join('\n\n');
 
+    const latency = Date.now() - reqStartTime;
+    console.log(`[SUCCESS] User: ${userId || 'Anon'} | Plan: ${serverValidatedPlan} | Provider: ${providerUsed} | Latency: ${latency}ms`);
+
     return new Response(JSON.stringify({
       message: finalMessageText,
       walkthroughData: Object.keys(walkthroughData).length > 0 ? walkthroughData : undefined,
       category: aiResponseJSON.category && aiResponseJSON.category !== 'Unknown' ? aiResponseJSON.category : (gameCategory || 'General'),
       isError: false
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error: any) {
-    console.error("Server Error:", error.message);
-    return new Response(JSON.stringify({ 
-        isError: true, 
-        message: "Server encountered an error processing your request.",
-        errorType: "fatal"
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    console.error(`[FATAL ERROR] Latency: ${Date.now() - reqStartTime}ms | Reason:`, error.message);
+    return new Response(JSON.stringify({ isError: true, message: "Server encountered an error processing your request.", errorType: "fatal" }), 
+    { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 })

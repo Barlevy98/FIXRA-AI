@@ -1,11 +1,9 @@
 import { MessageType } from '../types';
 import { getTranslation } from '../utils/translations'; 
 
-// שולפים את כתובת השרת שלכם ממשתני הסביבה
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Circuit Breaker פשוט (כדי למנוע ספאם מהטלפון עצמו)
 let consecutiveFailures = 0;
 let circuitOpenUntil = 0;
 const MAX_FAILURES = 5;
@@ -18,17 +16,23 @@ export async function fetchGameWalkthrough(
   previousMessages: MessageType[] = [],
   userPlan: string = 'Free',
   gameCategory: string = 'General',
-  signal?: AbortSignal 
-): Promise<{ message: string; walkthroughData?: any; category: string; isError?: boolean; errorType?: 'fatal' | 'retryable' | 'abort' }> {
+  signal?: AbortSignal,
+  userId?: string
+): Promise<{ message: string; walkthroughData?: any; category: string; isError?: boolean; errorType?: 'fatal' | 'retryable' | 'abort' | 'rate_limit' }> {
   
-  // אם ה-Circuit Breaker פתוח, אנחנו אפילו לא פונים לשרת
   if (Date.now() < circuitOpenUntil) {
     console.warn("Circuit Breaker is OPEN. Blocking request.");
     return { message: "System is experiencing high traffic. Please try again in a minute.", category: 'General', isError: true, errorType: 'fatal' };
   }
 
   try {
-    // זו הבקשה האחת והיחידה שהטלפון עושה עכשיו - פנייה לשרת ה-Edge שלכם!
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), 20000);
+    
+    const combinedSignal = signal ? 
+      (signal.aborted ? signal : (signal.addEventListener('abort', () => timeoutController.abort()), timeoutController.signal)) 
+      : timeoutController.signal;
+
     const response = await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
       method: 'POST',
       headers: {
@@ -41,23 +45,30 @@ export async function fetchGameWalkthrough(
         language,
         previousMessages,
         userPlan,
-        gameCategory
+        gameCategory,
+        userId
       }),
-      signal
+      signal: combinedSignal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
 
-    // השרת מחזיר לנו בדיוק את ה-JSON שאנחנו צריכים
     const data = await response.json();
     
-    consecutiveFailures = 0; // איפוס תקלות
+    // אנו רוצים לאפס את השגיאות גם אם המשתמש חסום בגלל Rate Limit, כי השרת הגיב בהצלחה.
+    consecutiveFailures = 0; 
     return data;
 
   } catch (error: any) {
     if (error.name === "AbortError" || error.message === "AbortError") {
+      if (!signal?.aborted) {
+        console.error('Request timed out in the client.');
+        return { message: getTranslation(language).aiError || "Connection timed out. Please try again.", category: 'General', isError: true, errorType: 'retryable' };
+      }
       return { message: "", category: 'General', isError: true, errorType: 'abort' };
     }
     

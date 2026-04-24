@@ -1,9 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Linking } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Linking, Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import { useAuth, useUser } from '@clerk/clerk-expo'; // 🌟 הבאנו את Clerk
 import { MessageType } from '../types';
 import TypingIndicator from './TypingIndicator';
+import { reportMessageToCloud } from '../utils/db'; // 🌟 הבאנו את הפונקציה שלנו
 
 interface MessageBubbleProps {
   msg: MessageType;
@@ -14,6 +17,55 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ msg, isBookmarked, onRate, onBookmark }: MessageBubbleProps) {
   const isUser = msg.sender === 'user';
+  const { getToken } = useAuth();
+  const { user } = useUser();
+
+  // 🌟 סטייטים עבור הפופ-אפ של הדיווח
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+
+  const handleOpenReportModal = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setReportReason('');
+    setReportModalVisible(true);
+  };
+
+  const submitReport = async () => {
+    if (!reportReason.trim()) {
+      Alert.alert("Missing Info", "Please tell us why you are reporting this message.");
+      return;
+    }
+
+    setIsSubmittingReport(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      const token = await getToken({ template: 'supabase' });
+      if (token && user?.id) {
+        const success = await reportMessageToCloud(
+          token, 
+          user.id, 
+          msg.id, 
+          msg.text || "Media Message", 
+          reportReason
+        );
+        
+        if (success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setReportModalVisible(false);
+          Alert.alert("Thank You", "Your report has been securely sent to our moderation team.");
+        } else {
+          throw new Error("Failed to send");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Error", "Could not send the report. Please try again later.");
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
 
   const renderContent = () => (
     <>
@@ -142,18 +194,85 @@ export default function MessageBubble({ msg, isBookmarked, onRate, onBookmark }:
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity 
-            onPress={() => onBookmark(msg)} 
-            style={[styles.actionBtn, isBookmarked && styles.bookmarkBtnActive]}
-          >
-            <Ionicons 
-              name={isBookmarked ? "bookmark" : "bookmark-outline"} 
-              size={16} 
-              color={isBookmarked ? "#ffca28" : "#888"} 
-            />
-          </TouchableOpacity>
+          <View style={styles.ratingContainer}>
+            {/* 🌟 כפתור הדיווח שפותח את הפופ-אפ המעוצב */}
+            <TouchableOpacity 
+              onPress={handleOpenReportModal} 
+              style={styles.actionBtn}
+            >
+              <Ionicons name="flag-outline" size={16} color="#ff4444" />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              onPress={() => onBookmark(msg)} 
+              style={[styles.actionBtn, isBookmarked && styles.bookmarkBtnActive]}
+            >
+              <Ionicons 
+                name={isBookmarked ? "bookmark" : "bookmark-outline"} 
+                size={16} 
+                color={isBookmarked ? "#ffca28" : "#888"} 
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       )}
+
+      {/* 🌟 הפופ-אפ הקאסטום המעוצב לדיווחים! 🌟 */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={reportModalVisible}
+        onRequestClose={() => setReportModalVisible(false)}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="warning" size={24} color="#ff4444" />
+              <Text style={styles.modalTitle}>Report Content</Text>
+            </View>
+            
+            <Text style={styles.modalSubtitle}>
+              Help us keep the community safe. Why are you reporting this message?
+            </Text>
+
+            <TextInput
+              style={styles.textInput}
+              placeholder="e.g., Inappropriate language, hallucination, wrong game..."
+              placeholderTextColor="#666"
+              multiline
+              autoFocus
+              maxLength={200}
+              value={reportReason}
+              onChangeText={setReportReason}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.cancelBtn]} 
+                onPress={() => setReportModalVisible(false)}
+                disabled={isSubmittingReport}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.submitBtn]} 
+                onPress={submitReport}
+                disabled={isSubmittingReport}
+              >
+                {isSubmittingReport ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.submitBtnText}>Send Report</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </>
   );
 }
@@ -183,4 +302,18 @@ const styles = StyleSheet.create({
   actionBtnActiveUp: { backgroundColor: 'rgba(0, 229, 255, 0.15)', borderColor: '#00e5ff' },
   actionBtnActiveDown: { backgroundColor: 'rgba(255, 0, 204, 0.15)', borderColor: '#ff00cc' },
   bookmarkBtnActive: { backgroundColor: 'rgba(255, 202, 40, 0.15)', borderColor: '#ffca28' },
+
+  // 🌟 עיצוב הפופ-אפ החדש
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContainer: { width: '100%', backgroundColor: '#0f002b', borderRadius: 24, padding: 25, borderWidth: 1, borderColor: 'rgba(255,68,68,0.3)' },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  modalTitle: { color: '#ffffff', fontSize: 20, fontWeight: 'bold', marginLeft: 10 },
+  modalSubtitle: { color: '#aaaaaa', fontSize: 14, marginBottom: 20, lineHeight: 20 },
+  textInput: { backgroundColor: 'rgba(255,255,255,0.05)', color: '#ffffff', borderRadius: 15, padding: 15, minHeight: 100, textAlignVertical: 'top', fontSize: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', marginBottom: 25 },
+  modalButtons: { flexDirection: 'row', justifyContent: 'space-between', gap: 15 },
+  modalBtn: { flex: 1, paddingVertical: 14, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  cancelBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#555' },
+  cancelBtnText: { color: '#cccccc', fontSize: 16, fontWeight: '600' },
+  submitBtn: { backgroundColor: '#ff4444' },
+  submitBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
 });
