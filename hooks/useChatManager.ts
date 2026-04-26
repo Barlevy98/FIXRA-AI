@@ -49,7 +49,6 @@ export function useChatManager(
   const isGeneratingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   
-  // 🌟 פיניש פרודקשן: מזהה בקשה ייחודי למניעת Race Conditions עם ה-UI 🌟
   const requestCounterRef = useRef(0);
 
   const sessionsRef = useRef(sessions);
@@ -129,15 +128,19 @@ export function useChatManager(
         }
       }
       setSessions(loadedSessions);
-      if (loadedSessions.length === 0) createNewSession();
-      else {
+      if (loadedSessions.length === 0) {
+        // Only clear ID and messages, don't auto-create
+        setCurrentSessionId(null);
+        setMessages([]);
+      } else {
         const mostRecent = loadedSessions[0];
         setCurrentSessionId(mostRecent.id);
         setMessages(mostRecent.messages);
       }
     } catch (e) {
       console.error('Load sessions error', e);
-      createNewSession();
+      setCurrentSessionId(null);
+      setMessages([]);
     }
   };
 
@@ -185,7 +188,20 @@ export function useChatManager(
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           const updatedSessions = sessionsRef.current.filter(s => s.id !== sessionId);
           saveSessionsToStorage(updatedSessions);
-          if (currentSessionId === sessionId) createNewSession();
+          
+          if (currentSessionId === sessionId) {
+             if (updatedSessions.length > 0) {
+               // If there are other sessions, switch to the most recent one
+               const mostRecent = updatedSessions[0];
+               setCurrentSessionId(mostRecent.id);
+               setMessages(mostRecent.messages);
+             } else {
+               // If no sessions left, just clear the screen (don't auto-create)
+               setCurrentSessionId(null);
+               setMessages([]);
+             }
+          }
+
           if (user?.id) {
             try {
               const token = await getToken({ template: 'supabase' });
@@ -254,7 +270,6 @@ export function useChatManager(
 
       let response: any;
       
-      // 🌟 פיניש פרודקשן: Exponential Backoff + Retry Type Checking 🌟
       for (let i = 0; i < 3; i++) {
         if (currentSignal.aborted) throw new Error("AbortError");
         
@@ -263,7 +278,7 @@ export function useChatManager(
         if (!response.isError) break; 
         
         if (response.errorType === 'abort') throw new Error("AbortError");
-        if (response.errorType === 'fatal') break; // שגיאה שלא נצליח לתקן (למשל, 400 Bad Request)
+        if (response.errorType === 'fatal') break;
 
         if (i < 2 && !currentSignal.aborted) {
           const waitTime = 500 * Math.pow(2, i); 

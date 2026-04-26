@@ -9,6 +9,7 @@ const corsHeaders = {
 
 interface AIResponseJSON {
   confidence?: number;
+  isFollowUp?: boolean;
   quickFixTitle?: string;
   message?: string;
   taskSummary?: string;
@@ -46,7 +47,6 @@ Deno.serve(async (req) => {
     const YOUTUBE_API_KEY = Deno.env.get('YOUTUBE_API_KEY');
     const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY');
     
-    // משיכת מפתחות השרת לטובת אימות מאובטח
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -54,19 +54,16 @@ Deno.serve(async (req) => {
 
     const hasMedia = media && media.base64 && (typeof media.base64 === 'string' || media.base64.length > 0);
 
-    // ==========================================
-    // 🛡️ ספרינט 1: אימות Premium והגבלת קצב (Rate Limiting)
-    // ==========================================
     let serverValidatedPlan = userPlan; 
     let isActuallyPro = false;
+    let isActuallyPremium = false;
     
     if (userId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-      // יצירת חיבור מאובטח למסד הנתונים
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       
       const { data: profile, error } = await supabase
         .from('user_profiles')
-        .select('current_plan, is_pro, daily_message_count, max_messages, last_daily_reset, message_count')
+        .select('current_plan, is_pro, daily_message_count, max_messages, last_daily_reset, message_count, bonus_solves_balance')
         .eq('user_id', userId)
         .single();
 
@@ -77,68 +74,96 @@ Deno.serve(async (req) => {
       if (profile) {
         serverValidatedPlan = profile.current_plan;
         isActuallyPro = profile.is_pro || serverValidatedPlan?.startsWith('PRO') || serverValidatedPlan === 'PREMIUM';
+        isActuallyPremium = serverValidatedPlan === 'PREMIUM';
         
         const now = Date.now();
         const oneDayMs = 24 * 60 * 60 * 1000;
         let currentCount = profile.daily_message_count || 0;
         let lastReset = profile.last_daily_reset || 0;
 
-        // איפוס יומי
         if (now - lastReset >= oneDayMs) {
           currentCount = 0;
           lastReset = now;
         }
 
-        // הגבלת קצב: 200 הודעות לפרו, 20 הודעות לחינמי
         const limit = profile.max_messages || (isActuallyPro ? 200 : 20);
+        let isUsingBonus = false;
 
-        // אם המשתמש חרג, מחזירים הודעת Rate Limit
         if (currentCount >= limit) {
-          console.warn(`[RATE LIMIT] User ${userId} blocked. Count: ${currentCount}/${limit}`);
-          return new Response(JSON.stringify({
-            isError: true,
-            errorType: "rate_limit", 
-            message: "מכסת ההודעות היומית שלך הסתיימה 🛑. שדרג לפרימיום כדי להמשיך לשוחח עם הסוכן ללא הגבלה!",
-            category: gameCategory || 'General'
-          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          if (profile.bonus_solves_balance && profile.bonus_solves_balance > 0) {
+             isUsingBonus = true; 
+          } else {
+             console.warn(`[RATE LIMIT] User ${userId} blocked. Count: ${currentCount}/${limit}. No bonus left.`);
+             // 🌟 עודכן פה ל-5 חברים 🌟
+             return new Response(JSON.stringify({
+               isError: true,
+               errorType: "rate_limit", 
+               message: "מכסת ההודעות היומית שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל 2 פתרונות חינם, או שדרג לפרימיום!",
+               category: gameCategory || 'General'
+             }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
         }
 
-        // מעדכנים את הספירה
-        await supabase.from('user_profiles').update({
-          daily_message_count: currentCount + 1,
-          last_daily_reset: lastReset,
-          message_count: (profile.message_count || 0) + 1
-        }).eq('user_id', userId);
+        const updates: any = { message_count: (profile.message_count || 0) + 1 };
+        
+        if (isUsingBonus) {
+           updates.bonus_solves_balance = profile.bonus_solves_balance - 1;
+        } else {
+           updates.daily_message_count = currentCount + 1;
+           updates.last_daily_reset = lastReset;
+        }
+
+        await supabase.from('user_profiles').update(updates).eq('user_id', userId);
       }
     }
-    // ==========================================
 
-    const systemInstruction = `You are an ELITE gaming AI assistant and video analysis expert.
+    if (hasMedia) {
+      if (media.type === 'video' && !isActuallyPremium) {
+        return new Response(JSON.stringify({ isError: true, errorType: "fatal", message: "Video analysis requires a Premium subscription.", category: gameCategory || 'General' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (media.type === 'image' && !isActuallyPro && !isActuallyPremium) {
+         return new Response(JSON.stringify({ isError: true, errorType: "fatal", message: "Image analysis requires a Pro subscription.", category: gameCategory || 'General' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    let systemInstruction = `You are an ELITE gaming AI assistant and video analysis expert.
 CRITICAL JSON RULES: Output ONLY valid raw JSON. No markdown.
 ANTI-HALLUCINATION & ELITE GAMER LOGIC:
-0. YOU ARE A GAMING ASSISTANT ONLY. If the user asks about ANYTHING outside of video games (e.g., flights, cooking, politics, coding, math, general info), you MUST reject it.
-   To reject, return exactly this JSON and nothing else:
+0. YOU ARE A GAMING ASSISTANT ONLY. If the user asks about ANYTHING outside of video games, you MUST reject it.
+   To reject, return exactly this JSON:
    {
-     "message": "אני עוזר AI שמתמחה במשחקי וידאו בלבד 🎮. אשמח לעזור לך עם מדריכים, משימות, בוסים או כל דבר שקשור למשחק שלך!",
+     "message": "אני עוזר AI שמתמחה במשחקי וידאו בלבד 🎮.",
      "category": "Unknown"
    }
-1. Deduce the exact mission name if the user gives a number.
-2. 'quickFixTitle' MUST be the exact mission/boss.
-3. 'taskSummary' MUST be highly specific actionable gameplay tip.
-4. NEVER return both 'message' and 'taskSummary'. One MUST be empty.
+1. 'quickFixTitle' MUST be the exact mission/boss.
+2. 'taskSummary' MUST be a highly specific actionable gameplay tip.
+3. NEVER return both 'message' and 'taskSummary'. One MUST be empty.
+4. "isFollowUp": Evaluate the chat history. If the user's current query is a continuation or follow-up question about the EXACT SAME boss, mission, or topic as the immediate previous conversation, set this to true. If the user is asking about a NEW boss, NEW mission, or NEW topic, set this to false.
+5. 🚨 NO REPETITION RULE: If 'isFollowUp' is true, you MUST NOT repeat the same advice from your previous messages. You must read the history and provide a completely NEW tip, alternative strategy, or deeper detail (e.g., Phase 2 tactics, specific attacks to dodge, or different gear to use).`;
 
+    if (isActuallyPremium) {
+      systemInstruction += `
+6. 💎 PREMIUM MICRO-CONTEXT PROTOCOL: You are analyzing a Premium user's gameplay. Detect not only the mission, but the CURRENT EXACT MOMENT.
+   If possible, based on the user's text or uploaded media, you MUST identify:
+   - The specific Boss Phase (e.g., "Phase 2").
+   - The specific current attack pattern or animation.
+   - The exact mistake the player is making right now (e.g., "dodging too early", "wrong elemental weapon").
+   Respond with a PRECISE ACTION for THAT exact moment. Do not give general advice. Be highly specific to what is happening on screen or what the user just described.`;
+    }
+
+    systemInstruction += `
 CRITICAL LANGUAGE RULES:
-- The fields 'quickFixTitle', 'message', and 'taskSummary' MUST BE IN: ${language || 'Hebrew'}.
-- ABSOLUTE OVERRIDE: The search query fields ('youtubeQuery', 'wikiQuery', 'ignQuery', 'polygonQuery', 'mapgenieQuery', 'fextralifeQuery') MUST STRICTLY BE IN 100% PURE ENGLISH. 
-- You MUST translate the Game Name, Boss Name, and Mission Name to English for the queries.
+- 'quickFixTitle', 'message', and 'taskSummary' MUST BE IN: ${language || 'Hebrew'}.
+- Search queries ('youtubeQuery', etc.) MUST STRICTLY BE IN PURE ENGLISH AND ALWAYS BE GENERATED.
 
 JSON RESPONSE FORMAT:
 {
   "confidence": 0,
+  "isFollowUp": false,
   "quickFixTitle": "...",
   "message": "...",
   "taskSummary": "...",
-  "youtubeQuery": "[Game Name in English] [Mission/Boss in English] walkthrough",
+  "youtubeQuery": "[Game Name in English] [Mission/Boss in English] walkthrough", 
   "wikiQuery": "[Game Name in English] [Mission in English] wiki guide",
   "ignQuery": "[Game Name in English] [Mission in English] ign walkthrough",
   "polygonQuery": "[Game Name in English] [Mission in English] polygon guide",
@@ -152,7 +177,6 @@ JSON RESPONSE FORMAT:
     let responseText = "";
     let providerUsed = "";
 
-    // SMART ROUTING (משתמש בסטטוס המאומת)
     if (hasMedia) {
       providerUsed = "Gemini-2.5-Flash (Media)";
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -223,6 +247,7 @@ JSON RESPONSE FORMAT:
     rawParsed = safeParseJSON(responseText);
 
     const aiResponseJSON: AIResponseJSON = {
+      isFollowUp: rawParsed.isFollowUp === true, 
       message: safeString(rawParsed.message),
       taskSummary: safeString(rawParsed.taskSummary),
       quickFixTitle: safeString(rawParsed.quickFixTitle),
@@ -234,6 +259,16 @@ JSON RESPONSE FORMAT:
       fextralifeQuery: safeString(rawParsed.fextralifeQuery),
       category: safeString(rawParsed.category) || 'General',
     };
+
+    if (aiResponseJSON.isFollowUp) {
+        console.log(`[COST SAVER] Follow-up query detected. Stripping search links.`);
+        aiResponseJSON.youtubeQuery = "";
+        aiResponseJSON.wikiQuery = "";
+        aiResponseJSON.ignQuery = "";
+        aiResponseJSON.polygonQuery = "";
+        aiResponseJSON.mapgenieQuery = "";
+        aiResponseJSON.fextralifeQuery = "";
+    }
 
     let allAvailableLinks: any[] = [];
     

@@ -14,12 +14,12 @@ jest.mock('expo-haptics', () => ({
   notificationAsync: jest.fn(),
 }));
 
-// 🌟 Mocking Expo Vector Icons (זה מה שפותר את הקריסה!)
+// 🌟 Mocking Expo Vector Icons 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: 'Ionicons',
 }));
 
-// 🌟 Mocking Linear Gradient (מונע קריסות של עיצוב טקסטורות בטסטים)
+// 🌟 Mocking Linear Gradient 
 jest.mock('expo-linear-gradient', () => ({
   LinearGradient: 'LinearGradient',
 }));

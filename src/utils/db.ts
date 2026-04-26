@@ -1,6 +1,5 @@
 import { getAuthenticatedSupabase } from './supabase';
 
-// פונקציה ששומרת או מעדכנת שיחת צ'אט בשרת (מאובטחת)
 export const saveChatSession = async (
   clerkToken: string,
   sessionId: string,
@@ -29,7 +28,6 @@ export const saveChatSession = async (
   return true;
 };
 
-// מושכת את כל השיחות של משתמש ספציפי מהשרת (מאובטחת)
 export const getUserChatSessions = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
@@ -45,10 +43,6 @@ export const getUserChatSessions = async (clerkToken: string, userId: string) =>
   
   return data;
 };
-
-// ==========================================
-// פונקציות חדשות עבור סטטוס משתמש (מדריך וכו')
-// ==========================================
 
 export const getUserTosStatus = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
@@ -118,15 +112,10 @@ export const markTutorialAsSeen = async (clerkToken: string, userId: string) => 
   return true;
 };
 
-// ==========================================
-// פונקציות ניהול מנויים וקרדיטים (Paywall)
-// ==========================================
-
 export const getUserSubscriptionData = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
     .from('user_profiles')
-    // 🌟 הנה התיקון האמיתי: הוספנו את has_used_premium_trial ל-select! 🌟
     .select('message_count, max_messages, current_plan, is_pro, last_reset, daily_message_count, last_daily_reset, has_used_premium_trial')
     .eq('user_id', userId)
     .single();
@@ -151,15 +140,11 @@ export const updateSubscriptionData = async (clerkToken: string, userId: string,
   return true;
 };
 
-// ==========================================
-// פונקציות תוכנית שותפים ומשפיענים (Affiliates)
-// ==========================================
-
 export const getUserAffiliateData = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
     .from('user_profiles')
-    .select('referral_code, referred_by, earnings_balance')
+    .select('referral_code, referred_by, earnings_balance, creator_status, registered_invites_count, claimed_invites_milestones, bonus_solves_balance')
     .eq('user_id', userId)
     .single();
 
@@ -199,9 +184,59 @@ export const createReferralCode = async (clerkToken: string, userId: string, cus
   return { success: true };
 };
 
-// ==========================================
-// פונקציות הגדרות משתמש (Settings)
-// ==========================================
+export const submitCreatorApplication = async (clerkToken: string, userId: string, link: string, followers: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({
+      user_id: userId,
+      creator_status: 'pending',
+      creator_link: link,
+      creator_followers: followers,
+      updated_at: Date.now()
+    });
+
+  if (error) {
+    console.error('Error submitting creator app:', error.message);
+    return { success: false, error: error.message };
+  }
+  
+  return { success: true };
+};
+
+// 🌟 עודכן ליעד של 5 חברים = 2 פתרונות 🌟
+export const claimInviteReward = async (clerkToken: string, userId: string) => {
+  const supabase = getAuthenticatedSupabase(clerkToken);
+  
+  const { data, error: fetchErr } = await supabase
+    .from('user_profiles')
+    .select('registered_invites_count, claimed_invites_milestones, bonus_solves_balance')
+    .eq('user_id', userId)
+    .single();
+    
+  if (fetchErr || !data) return { success: false, error: 'Could not fetch data' };
+  
+  // מחשב כמה נרשמו פחות מה שהוא כבר פדה (כפול 5 כי כל מנה היא 5 חברים)
+  const unclaimed = (data.registered_invites_count || 0) - ((data.claimed_invites_milestones || 0) * 5);
+  if (unclaimed < 5) return { success: false, error: 'Not enough invites to claim' };
+
+  // מוסיף 2 פתרונות לכספת, ומעדכן שהוא פדה עוד אבן דרך אחת
+  const newBonus = (data.bonus_solves_balance || 0) + 2;
+  const newClaimed = (data.claimed_invites_milestones || 0) + 1;
+
+  const { error: updateErr } = await supabase
+    .from('user_profiles')
+    .upsert({ 
+      user_id: userId, 
+      bonus_solves_balance: newBonus, 
+      claimed_invites_milestones: newClaimed, 
+      updated_at: Date.now() 
+    });
+
+  if (updateErr) return { success: false, error: updateErr.message };
+  return { success: true, newBonus, newClaimed };
+};
 
 export const updateUserLanguage = async (clerkToken: string, userId: string, languageId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
@@ -219,10 +254,6 @@ export const updateUserLanguage = async (clerkToken: string, userId: string, lan
   }
   return true;
 };
-
-// ==========================================
-// פונקציות מועדפים (Bookmarks)
-// ==========================================
 
 export const saveBookmark = async (clerkToken: string, userId: string, title: string, messageData: any) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
@@ -269,10 +300,6 @@ export const deleteBookmark = async (clerkToken: string, bookmarkId: string) => 
   }
   return true;
 };
-
-// ==========================================
-// פונקציות הגדרות מתקדמות (Advanced Settings)
-// ==========================================
 
 export const getUserHapticsPreference = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
@@ -353,7 +380,7 @@ export const deleteAllUserChatSessions = async (clerkToken: string, userId: stri
   
   return true;
 };
-// 🌟 פונקציה לשליחת דיווח על תוכן ל-Supabase
+
 export async function reportMessageToCloud(token: string, userId: string, messageId: string, messageText: string, reason: string) {
   try {
     const supabase = getAuthenticatedSupabase(token);

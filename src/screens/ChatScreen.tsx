@@ -91,8 +91,6 @@ export default function ChatScreen() {
   const [hasAutoOpenedLibrary, setHasAutoOpenedLibrary] = useState(false);
 
   const [dismissedTrialPopup, setDismissedTrialPopup] = useState(false);
-  
-  // 🌟 סטייט חדש לפופ-אפ החסימה המעוצב! 🌟
   const [isLimitModalVisible, setIsLimitModalVisible] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(screenWidth)).current;
@@ -233,13 +231,57 @@ export default function ChatScreen() {
     }
   };
 
+  // 🌟 הגבלת הגישה למדיה לפי דרגות!
+  const enforceMediaTierLimit = () => {
+    const isPro = effectivePlan?.startsWith('PRO') || effectivePlan === 'PREMIUM';
+    if (!isPro && effectivePlan !== 'PREMIUM') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert(
+        "Upgrade Required", 
+        "Image and video analysis are available for Pro and Premium users. Upgrade now to unlock visual AI!",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Upgrade", onPress: () => setIsPaywallVisible(true) }
+        ]
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const enforceVideoTierLimit = (assetType: string) => {
+    if (assetType === 'video' && effectivePlan !== 'PREMIUM') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert(
+        "Premium Required", 
+        "Video frame analysis is an exclusive Premium feature. Upgrade to unlock!",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Upgrade", onPress: () => setIsPaywallVisible(true) }
+        ]
+      );
+      return false;
+    }
+    return true;
+  };
+
   const openCamera = async () => {
     setIsAttachMenuVisible(false);
+    if (!enforceMediaTierLimit()) return; // בדיקת תמונות (Pro/Premium)
+
     const p = await ImagePicker.requestCameraPermissionsAsync();
     if(!p.granted) { Alert.alert("Permission needed", "Please allow camera access."); return; }
-    let r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images', 'videos'], allowsEditing: true, quality: 0.5, base64: true });
+    
+    // מאפשרים צילום וידאו רק לפרימיום
+    const mediaTypes = effectivePlan === 'PREMIUM' ? ['images', 'videos'] : ['images'];
+    
+    // Note: TypeScript issue with ImagePickerMediaType type mapping, bypassing explicitly for this implementation
+    let r = await ImagePicker.launchCameraAsync({ mediaTypes: mediaTypes as any, allowsEditing: true, quality: 0.5, base64: true });
+    
     if(!r.canceled) {
       const asset = r.assets[0];
+      if (!enforceVideoTierLimit(asset.type || 'image')) return; // חסימה נוספת למקרה שהמשתמש עקף
+
       if (asset.type === 'video') {
         const videoData = await processVideoFrames(asset.uri, asset.duration);
         if (videoData) setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
@@ -251,9 +293,18 @@ export default function ChatScreen() {
 
   const openGallery = async () => {
     setIsAttachMenuVisible(false);
-    let r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], allowsEditing: true, quality: 0.5, base64: true });
+    if (!enforceMediaTierLimit()) return; // בדיקת תמונות (Pro/Premium)
+
+    // מאפשרים בחירת וידאו מהגלריה רק לפרימיום
+    const mediaTypes = effectivePlan === 'PREMIUM' ? ['images', 'videos'] : ['images'];
+
+    // Note: TypeScript issue with ImagePickerMediaType type mapping, bypassing explicitly for this implementation
+    let r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: mediaTypes as any, allowsEditing: true, quality: 0.5, base64: true });
+    
     if(!r.canceled) {
       const asset = r.assets[0];
+      if (!enforceVideoTierLimit(asset.type || 'image')) return; // חסימה כפולה
+      
       if (asset.type === 'video') {
         const videoData = await processVideoFrames(asset.uri, asset.duration);
         if (videoData) setSelectedMedia({ uri: asset.uri, type: 'video', base64: videoData.base64Array, thumbnailUri: videoData.thumbnailUri });
@@ -273,7 +324,7 @@ export default function ChatScreen() {
     
     if (hasReachedLimit && !isTrialActive) { 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setIsLimitModalVisible(true); // 🌟 הקפצת החלונית המעוצבת החדשה במקום ה-Alert הקודם
+      setIsLimitModalVisible(true);
       return; 
     }
 
@@ -311,10 +362,9 @@ export default function ChatScreen() {
     }
   };
 
-  // 🌟 הפונקציה שמופעלת כשנוגעים באזור החסום
   const handleTrapClick = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    setIsLimitModalVisible(true); // פותח את המודל המעוצב החדש!
+    setIsLimitModalVisible(true);
   };
 
   const showInYourFaceTrial = hasReachedLimit && !hasUsedTrial && !dismissedTrialPopup;
@@ -414,7 +464,6 @@ export default function ChatScreen() {
           </View>
         </KeyboardAvoidingView>
 
-        {/* 🌟 הפופ-אפ של ה-Trial 🌟 */}
         <Modal visible={showInYourFaceTrial} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.trialPopupCard}>
@@ -437,7 +486,6 @@ export default function ChatScreen() {
           </View>
         </Modal>
 
-        {/* 🌟 הפופ-אפ המעוצב החדש: כשלוחצים על אזור ההקלדה ואין יותר הודעות (מחליף את ה-Alert המכוער) 🌟 */}
         <Modal visible={isLimitModalVisible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.limitModalCard}>
@@ -505,7 +553,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent'
   },
   
-  // סגנון אחיד לשכבת הרקע הכהה של שני הפופ-אפים
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.85)',
@@ -514,7 +561,6 @@ const styles = StyleSheet.create({
     padding: 20
   },
 
-  // 🌟 סטיילים ל-Trial Popup 🌟
   trialPopupCard: {
     backgroundColor: '#0a0026',
     width: '100%',
@@ -580,7 +626,6 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline'
   },
 
-  // 🌟 סטיילים לפופ-אפ החסימה הרגיל (במקום ה-Alert) 🌟
   limitModalCard: {
     backgroundColor: '#0a0026',
     width: '100%',

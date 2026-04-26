@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Share, Platform, KeyboardAvoidingView, Linking, ScrollView } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Share, Platform, KeyboardAvoidingView, Linking, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
-import { useAuth } from '@clerk/clerk-expo';
-import { getUserAffiliateData, createReferralCode } from '../utils/db';
+import { useAuth, useUser } from '@clerk/clerk-expo';
+import { getUserAffiliateData, createReferralCode, submitCreatorApplication, claimInviteReward } from '../utils/db'; 
 
 interface AffiliateModalProps {
   visible: boolean;
@@ -15,26 +15,36 @@ interface AffiliateModalProps {
 
 export default function AffiliateModal({ visible, onClose, mode }: AffiliateModalProps) {
   const { getToken, userId } = useAuth();
+  const { user } = useUser();
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showGuide, setShowGuide] = useState(false); 
+  const [showLegal, setShowLegal] = useState(false); 
   
   const [referralCode, setReferralCode] = useState<string | null>(null);
-  const [earnings, setEarnings] = useState<number>(0);
-  const [customCodeInput, setCustomCodeInput] = useState('');
   
-  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [earnings, setEarnings] = useState<number>(0); 
+  const [registeredInvites, setRegisteredInvites] = useState<number>(0);
+  const [claimedMilestones, setClaimedMilestones] = useState<number>(0);
+  const [bonusSolves, setBonusSolves] = useState<number>(0);
+  
+  const [customCodeInput, setCustomCodeInput] = useState('');
+  const [creatorStatus, setCreatorStatus] = useState<'none' | 'pending' | 'approved'>('none');
+  const [creatorLinkInput, setCreatorLinkInput] = useState('');
+  const [creatorFollowersInput, setCreatorFollowersInput] = useState('');
+  const [isTermsAccepted, setIsTermsAccepted] = useState(false);
 
   const isCreator = mode === 'creator';
   const themeColor = isCreator ? '#ff00cc' : '#00e5ff';
   const themeGradient = isCreator ? ['#ff00cc', '#b300ff'] : ['#00e5ff', '#007acc'];
 
+  // 🌟 יעד של 5 חברים = פרס 🌟
+  const unclaimedInvites = registeredInvites - (claimedMilestones * 5);
+  const canClaimReward = unclaimedInvites >= 5 && !isCreator;
+
   useEffect(() => {
-    if (visible && userId) {
-      setShowGuide(false); 
-      loadData();
-    }
+    if (visible && userId) { setShowGuide(false); loadData(); }
   }, [visible, userId]);
 
   const loadData = async () => {
@@ -43,354 +53,370 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
       const token = await getToken({ template: 'supabase' });
       if (token) {
         const data = await getUserAffiliateData(token, userId!);
-        if (data && data.referral_code) {
-          setReferralCode(data.referral_code);
-          setEarnings(data.earnings_balance || 0);
-        } else {
-          setReferralCode(null);
+        if (data) {
+          setReferralCode(data.referral_code || null);
+          setEarnings(data.earnings_balance || 0); 
+          setRegisteredInvites(data.registered_invites_count || 0);
+          setClaimedMilestones(data.claimed_invites_milestones || 0);
+          setBonusSolves(data.bonus_solves_balance || 0);
+          setCreatorStatus(data.creator_status || 'none');
         }
       }
-    } catch (e) {
-      console.error('Error loading affiliate data', e);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (e) { console.error(e); } finally { setIsLoading(false); }
   };
 
-  const handleCreateCode = async () => {
-    if (customCodeInput.trim().length < 3) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      alert("Code must be at least 3 characters.");
-      return;
+  const handleClaimReward = async () => {
+    setIsSaving(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      if (token) {
+        const res = await claimInviteReward(token, userId!);
+        if (res.success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert("Reward Claimed! 🎁", "2 Premium Solves have been added to your vault!");
+          setBonusSolves(res.newBonus || bonusSolves + 2);
+          setClaimedMilestones(res.newClaimed || claimedMilestones + 1);
+        } else {
+          Alert.alert("Oops", "Could not claim reward right now.");
+        }
+      }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
+  };
+
+  const handleApplyCreator = async () => {
+    if (!creatorLinkInput.trim() || !creatorFollowersInput.trim()) {
+      return Alert.alert("Missing Info", "Please fill in all fields.");
+    }
+    if (!isTermsAccepted) {
+      return Alert.alert("Legal Requirement", "You must accept the Creator Agreement to proceed.");
     }
 
     setIsSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+
+    try {
+      const token = await getToken({ template: 'supabase' });
+      if (token) {
+        const res = await submitCreatorApplication(token, userId!, creatorLinkInput.trim(), creatorFollowersInput.trim());
+        
+        if (res.success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setCreatorStatus('pending');
+
+          const adminEmail = 'fixra.partners@gmail.com';
+          const subject = `New Creator Application: ${user?.firstName || 'Gamer'}`;
+          const body = `Hello Fixra Team,\n\nA new creator has applied for the program:\n\nName: ${user?.fullName}\nEmail: ${user?.primaryEmailAddress?.emailAddress}\nChannel Link: ${creatorLinkInput}\nFollowers: ${creatorFollowersInput}\nUser ID: ${userId}\n\nPlease review in Supabase to approve.`;
+          
+          const mailtoUrl = `mailto:${adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+          Linking.openURL(mailtoUrl);
+        } else {
+          Alert.alert("Error", "Could not submit application.");
+        }
+      }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
+  };
+
+  const handleCreateCode = async () => {
+    if (customCodeInput.trim().length < 3) return Alert.alert("Invalid Tag", "Min 3 characters.");
+    setIsSaving(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const token = await getToken({ template: 'supabase' });
       if (token) {
         const finalCode = customCodeInput.trim().toUpperCase().replace(/\s+/g, '');
         const res = await createReferralCode(token, userId!, finalCode);
-        
-        if (res.success) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setReferralCode(finalCode);
-        } else {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          alert(res.error === 'Code already taken' ? "This tag is already taken. Choose another!" : "Error saving code.");
-        }
+        if (res.success) { setReferralCode(finalCode); }
+        else { Alert.alert("Error", "This tag is already taken."); }
       }
-    } catch (e) {
-      console.error("Error creating code", e);
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
   };
 
   const handleCopyLink = async () => {
-    const link = `https://fixra.ai/ref/${referralCode}`;
-    await Clipboard.setStringAsync(link);
+    await Clipboard.setStringAsync(`https://fixra.ai/ref/${referralCode}`);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    alert("Link copied to clipboard! 📋");
+    Alert.alert("Link Copied", "Ready to paste!");
   };
 
   const handleShare = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const link = `https://fixra.ai/ref/${referralCode}`;
     const message = isCreator 
-      ? `Check out FIXRA AI for gaming guides! Use my link: ${link}`
-      : `I'm using FIXRA to solve levels! Use my link to get a PRO discount: ${link}`;
-      
-    try {
-      await Share.share({
-        message: Platform.OS === 'android' ? link : message,
-        url: Platform.OS === 'ios' ? link : undefined,
-        title: 'Share FIXRA'
-      });
-    } catch (error) {
-      console.error('Share error:', error);
-    }
+      ? `Level up with FIXRA AI! Use my link: ${link}` 
+      : `Join me on FIXRA AI and get smarter game guides! ${link}`;
+    Share.share({ message: Platform.OS === 'android' ? link : message, url: Platform.OS === 'ios' ? link : undefined });
   };
-
-  const handleWithdraw = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    if (earnings <= 0) {
-      alert("You need a balance of at least $1 to withdraw funds.");
-      return;
-    }
-    
-    const email = 'fixra.partners@gmail.com'; 
-    const subject = `Withdrawal Request - Creator: ${referralCode}`;
-    const body = `Hello FIXRA Team,\n\nI am a creator with the tag "${referralCode}".\nI have a balance of $${earnings.toFixed(2)} and would like to request a withdrawal to my PayPal account.\n\nMy PayPal email is: [ENTER PAYPAL EMAIL HERE]\n\nThank you!`;
-    
-    const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    
-    try {
-      const supported = await Linking.canOpenURL(mailtoUrl);
-      if (supported) {
-        await Linking.openURL(mailtoUrl);
-      } else {
-        alert(`Could not open email app. Please email us directly at ${email}`);
-      }
-    } catch (error) {
-      console.error('Error opening email client', error);
-    }
-  };
-
-  const closeAndVibrate = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setCustomCodeInput(''); 
-    onClose();
-  };
-
-  // 🌟 מסך הדרכה (Quest Log Style) 🌟
-  const renderGuide = () => (
-    <View style={styles.guideContainer}>
-      <Text style={styles.guideTitle}>Quest Objectives</Text>
-      <Text style={styles.guideSubtitle}>Complete these steps to unlock rewards</Text>
-
-      <View style={styles.questTimeline}>
-        <View style={styles.questLine} />
-        
-        <View style={styles.stepRow}>
-          <View style={[styles.stepIconWrapper, { borderColor: themeColor, shadowColor: themeColor }]}>
-            <Ionicons name="pricetag" size={20} color={themeColor} />
-          </View>
-          <View style={styles.stepTextContainer}>
-            <Text style={styles.stepTitle}>Claim Your Tag</Text>
-            <Text style={styles.stepDesc}>Choose a unique gaming nickname to generate your personal link.</Text>
-          </View>
-        </View>
-
-        <View style={styles.stepRow}>
-          <View style={[styles.stepIconWrapper, { borderColor: themeColor, shadowColor: themeColor }]}>
-            <Ionicons name="share-social" size={20} color={themeColor} />
-          </View>
-          <View style={styles.stepTextContainer}>
-            <Text style={styles.stepTitle}>{isCreator ? "Share & Earn" : "Invite Friends"}</Text>
-            <Text style={styles.stepDesc}>
-              {isCreator 
-                ? "Share your link on TikTok or YouTube. You get a 20% commission for every PRO upgrade." 
-                : "Send your link via WhatsApp or Discord to your gaming buddies."}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.stepRow}>
-          <View style={[styles.stepIconWrapper, { borderColor: themeColor, shadowColor: themeColor }]}>
-            <Ionicons name={isCreator ? "wallet" : "flash"} size={20} color={themeColor} />
-          </View>
-          <View style={styles.stepTextContainer}>
-            <Text style={styles.stepTitle}>{isCreator ? "Get Paid" : "Get Rewarded"}</Text>
-            <Text style={styles.stepDesc}>
-              {isCreator 
-                ? "Accumulate earnings and withdraw real money directly to your PayPal account." 
-                : "Whenever a friend upgrades using your link, you instantly get 100 free PRO messages!"}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={{ flex: 1 }} />
-
-      <TouchableOpacity style={styles.actionBtn} onPress={() => setShowGuide(false)}>
-        <LinearGradient colors={themeGradient as [string, string]} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionBtnGradient}>
-          <Text style={styles.actionBtnText}>Accept Quest</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-    </View>
-  );
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      {/* 🌟 עטפנו את כל המסך ב-KeyboardAvoidingView כדי לטפל במקלדת 🌟 */}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.overlay}>
         <View style={styles.modalContentWrapper}>
           <View style={styles.modalContent}>
             
-            {/* Header נשאר מחוץ ל-ScrollView כדי שיישאר תמיד למעלה */}
             <View style={styles.header}>
               <View style={styles.headerTitleRow}>
                 <Ionicons name={isCreator ? "star" : "gift"} size={24} color={themeColor} style={{ marginRight: 10 }} />
-                <Text style={styles.title}>{isCreator ? 'Creator Program' : 'Invite Friends'}</Text>
+                <Text style={styles.title}>{isCreator ? 'Creator Program' : 'Invite & Earn'}</Text>
               </View>
               <View style={styles.headerActions}>
                 {!showGuide && (
-                  <TouchableOpacity onPress={() => setShowGuide(true)} style={styles.iconBtn}>
-                    <Ionicons name="help-circle" size={26} color="#aaaaaa" />
+                  <TouchableOpacity onPress={() => setShowGuide(true)} style={[styles.iconBtn, { borderColor: themeColor, borderWidth: 1 }]}>
+                    <Ionicons name="help" size={22} color={themeColor} />
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={closeAndVibrate} style={styles.iconBtn}>
-                  <Ionicons name="close" size={28} color="#aaaaaa" />
+                <TouchableOpacity onPress={() => { setCustomCodeInput(''); onClose(); }} style={styles.iconBtn}>
+                  <Ionicons name="close" size={24} color="#fff" />
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* 🌟 עטפנו את התוכן הפנימי ב-ScrollView שמאפשר גלילה מעל המקלדת 🌟 */}
-            <ScrollView 
-              contentContainerStyle={{ flexGrow: 1 }} 
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              {isLoading ? (
-                <View style={styles.centerContent}>
-                  <ActivityIndicator size="large" color={themeColor} />
+            <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {isLoading ? ( <View style={styles.centerContent}><ActivityIndicator color={themeColor} /></View> ) : 
+              
+              showGuide ? (
+                // 🌟 מדריך מורחב שמסביר על הכסף והפתרונות גם יחד! 🌟
+                <View style={styles.guideContainer}>
+                  <Text style={styles.guideTitle}>How It Works</Text>
+                  <Text style={styles.guideSubtitle}>Follow these steps to earn dual rewards</Text>
+                  <View style={styles.questTimeline}>
+                    <View style={[styles.questLine, { backgroundColor: themeColor + '40' }]} />
+                    <View style={styles.stepRow}>
+                      <View style={[styles.stepIconWrapper, { borderColor: themeColor }]}><Ionicons name="shield-outline" size={20} color={themeColor} /></View>
+                      <View style={styles.stepTextContainer}>
+                        <Text style={styles.stepTitle}>Equip Your Tag</Text>
+                        <Text style={styles.stepDesc}>Claim a unique gaming handle.</Text>
+                      </View>
+                    </View>
+                    <View style={styles.stepRow}>
+                      <View style={[styles.stepIconWrapper, { borderColor: themeColor }]}><Ionicons name="megaphone-outline" size={20} color={themeColor} /></View>
+                      <View style={styles.stepTextContainer}>
+                        <Text style={styles.stepTitle}>Share The Link</Text>
+                        <Text style={styles.stepDesc}>Send your link to friends via WhatsApp or Discord.</Text>
+                      </View>
+                    </View>
+                    <View style={styles.stepRow}>
+                      <View style={[styles.stepIconWrapper, { borderColor: themeColor }]}><Ionicons name="trophy-outline" size={20} color={themeColor} /></View>
+                      <View style={styles.stepTextContainer}>
+                        <Text style={styles.stepTitle}>Earn Rewards</Text>
+                        <Text style={styles.stepDesc}>
+                          {isCreator 
+                            ? "Earn real cash commissions for every PRO upgrade." 
+                            : "1. Invite 5 friends to unlock 2 free Premium AI solves.\n2. Earn REAL CASH commissions if they upgrade to PRO!"}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <TouchableOpacity style={[styles.actionBtn, {marginTop: 20}]} onPress={() => setShowGuide(false)}>
+                    <LinearGradient colors={themeGradient as [string, string]} style={styles.actionBtnGradient}>
+                      <Text style={styles.actionBtnText}>Got it!</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
                 </View>
-              ) : showGuide ? (
-                
-                renderGuide()
+
+              ) : isCreator && creatorStatus === 'none' ? (
+                <View style={styles.setupContainer}>
+                  <View style={[styles.iconCircle, { borderColor: themeColor }]}><Ionicons name="videocam" size={40} color={themeColor} /></View>
+                  <Text style={styles.setupTitle}>Apply as Creator</Text>
+                  <Text style={styles.setupDesc}>Join our Elite Creator team to earn real revenue. Our team will manually review your channel.</Text>
+                  
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>CHANNEL LINK (YouTube / TikTok / Twitch)</Text>
+                    <View style={[styles.inputWrapper, { borderColor: themeColor + '40' }]}>
+                      <TextInput style={styles.input} placeholder="https://..." placeholderTextColor="#666" value={creatorLinkInput} onChangeText={setCreatorLinkInput} autoCapitalize="none" />
+                    </View>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>FOLLOWERS COUNT</Text>
+                    <View style={[styles.inputWrapper, { borderColor: themeColor + '40' }]}>
+                      <TextInput style={styles.input} placeholder="e.g. 50,000" placeholderTextColor="#666" value={creatorFollowersInput} onChangeText={setCreatorFollowersInput} keyboardType="numeric" />
+                    </View>
+                  </View>
+
+                  <TouchableOpacity style={styles.legalCheckRow} onPress={() => setIsTermsAccepted(!isTermsAccepted)}>
+                    <View style={[styles.checkbox, isTermsAccepted && { backgroundColor: themeColor, borderColor: themeColor }]}>
+                       {isTermsAccepted && <Ionicons name="checkmark" size={14} color="#000" />}
+                    </View>
+                    <Text style={styles.legalCheckText}>I agree to the </Text>
+                    <TouchableOpacity onPress={() => setShowLegal(true)}>
+                      <Text style={[styles.legalLink, { color: themeColor }]}>Creator Agreement</Text>
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={styles.actionBtn} onPress={handleApplyCreator} disabled={isSaving}>
+                    <LinearGradient colors={themeGradient as [string, string]} style={styles.actionBtnGradient}>
+                      {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionBtnText}>Send Application</Text>}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+
+              ) : isCreator && creatorStatus === 'pending' ? (
+                <View style={styles.centerContent}>
+                  <View style={[styles.iconCircle, { borderColor: '#ffaa00' }]}>
+                    <Ionicons name="hourglass-outline" size={45} color="#ffaa00" />
+                  </View>
+                  <Text style={[styles.setupTitle, {color: '#ffaa00'}]}>Pending Review</Text>
+                  <Text style={styles.setupDesc}>We received your application! Our partners are reviewing your channel. You'll be notified soon.</Text>
+                </View>
 
               ) : !referralCode ? (
-                
-                // 🌟 מצב 1: יצירת תג 🌟
                 <View style={styles.setupContainer}>
-                  <View style={[styles.iconCircle, { shadowColor: themeColor, borderColor: themeColor }]}>
-                    <Ionicons name="game-controller" size={40} color={themeColor} />
-                  </View>
-                  <Text style={styles.setupTitle}>Claim Your Gamer Tag</Text>
-                  <Text style={styles.setupDesc}>
-                    {isCreator 
-                      ? "Create your unique link to start earning real money from your followers." 
-                      : "Create your unique link to share with friends and unlock free PRO messages."}
-                  </Text>
-                  
-                  <View style={[styles.inputWrapper, isInputFocused && { borderColor: themeColor, shadowColor: themeColor, shadowOffset: {width: 0, height: 0}, shadowOpacity: 0.5, shadowRadius: 10 }]}>
+                   <View style={[styles.iconCircle, { borderColor: themeColor }]}><Ionicons name="id-card" size={40} color={themeColor} /></View>
+                   <Text style={styles.setupTitle}>Claim Gamer Tag</Text>
+                   <Text style={styles.setupDesc}>Choose a unique name for your referral link.</Text>
+                   <View style={[styles.inputWrapper, { borderColor: themeColor + '40', marginTop: 10 }]}>
                     <Text style={styles.urlPrefix}>fixra.ai/ref/</Text>
-                    <TextInput 
-                      style={styles.input}
-                      placeholder="YOUR_NAME"
-                      placeholderTextColor="#666"
-                      value={customCodeInput}
-                      onChangeText={setCustomCodeInput}
-                      autoCapitalize="characters"
-                      maxLength={15}
-                      onFocus={() => setIsInputFocused(true)}
-                      onBlur={() => setIsInputFocused(false)}
-                    />
+                    <TextInput style={styles.input} placeholder="NAME" placeholderTextColor="#666" value={customCodeInput} onChangeText={setCustomCodeInput} autoCapitalize="characters" maxLength={15} />
                   </View>
-                  
                   <TouchableOpacity style={styles.actionBtn} onPress={handleCreateCode} disabled={isSaving}>
-                    <LinearGradient colors={themeGradient as [string, string]} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionBtnGradient}>
-                      {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionBtnText}>Generate Link</Text>}
-                    </LinearGradient>
+                    <LinearGradient colors={themeGradient as [string, string]} style={styles.actionBtnGradient}><Text style={styles.actionBtnText}>Generate Link</Text></LinearGradient>
                   </TouchableOpacity>
                 </View>
 
               ) : (
-                
-                // 🌟 מצב 2: ה-Dashboard 🌟
                 <View style={styles.dashboardContainer}>
-                  
-                  <LinearGradient 
-                    colors={['rgba(255,255,255,0.08)', 'rgba(0,0,0,0.8)']} 
-                    style={[styles.vipCard, { borderColor: themeColor }]}
-                  >
-                    <Ionicons name="planet" size={120} color="rgba(255,255,255,0.02)" style={styles.cardWatermark} />
-                    
-                    <View style={styles.cardTopRow}>
-                      <Text style={styles.balanceLabel}>{isCreator ? 'TOTAL EARNINGS' : 'REWARD BALANCE'}</Text>
-                      <Ionicons name={isCreator ? "diamond" : "flash"} size={20} color={themeColor} />
-                    </View>
-                    
-                    <Text style={styles.balanceAmount}>
-                      {isCreator ? `$${earnings.toFixed(2)}` : `${earnings} MSG`}
-                    </Text>
-                    
-                    <View style={styles.cardBottomRow}>
-                      <Text style={styles.cardTagText}>{referralCode}</Text>
-                      {isCreator && (
-                        <TouchableOpacity style={styles.withdrawBtn} onPress={handleWithdraw}>
+                  {/* 🌟 הארנק המפוצל החדש: כסף וגם פתרונות למשתמשים רגילים 🌟 */}
+                  <View style={[styles.vipCard, { shadowColor: themeColor }]}>
+                    <LinearGradient colors={['rgba(255,255,255,0.05)', 'rgba(0,0,0,0.6)']} style={styles.vipCardGradient}>
+                      
+                      {/* SECTION 1: CASH EARNINGS (Visible to EVERYONE) */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                        <View>
+                          <Text style={styles.balanceLabel}>CASH EARNINGS</Text>
+                          <Text style={[styles.balanceAmount, { textShadowColor: themeColor, textShadowRadius: 10, fontSize: 38 }]}>
+                            ${earnings.toFixed(2)}
+                          </Text>
+                        </View>
+                        <TouchableOpacity style={styles.withdrawBtn} onPress={() => Linking.openURL('mailto:fixra.partners@gmail.com')}>
                           <Text style={styles.withdrawText}>Withdraw</Text>
-                          <Ionicons name="arrow-forward" size={14} color="#fff" style={{marginLeft: 5}} />
                         </TouchableOpacity>
+                      </View>
+
+                      {/* DIVIDER (If not creator) */}
+                      {!isCreator && <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 15 }} />}
+
+                      {/* SECTION 2: AI SOLVES VAULT (Visible only to normal users) */}
+                      {!isCreator && (
+                        <View>
+                          <Text style={styles.balanceLabel}>VAULT: BONUS SOLVES</Text>
+                          <Text style={[styles.balanceAmount, { textShadowColor: themeColor, textShadowRadius: 10, fontSize: 38, marginBottom: 10 }]}>
+                            {bonusSolves} <Text style={{fontSize: 16}}>AI</Text>
+                          </Text>
+
+                          {canClaimReward ? (
+                            <TouchableOpacity onPress={handleClaimReward} disabled={isSaving}>
+                              <LinearGradient colors={['#ffaa00', '#ff5500']} style={{paddingVertical: 8, paddingHorizontal: 15, borderRadius: 12, alignSelf: 'flex-start'}}>
+                                {isSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 13}}>🎁 CLAIM 2 FREE SOLVES!</Text>}
+                              </LinearGradient>
+                            </TouchableOpacity>
+                          ) : (
+                            <Text style={{color: '#aaa', fontSize: 13, fontWeight: 'bold'}}>
+                              🎯 Goal: {unclaimedInvites}/5 Invites to next reward
+                            </Text>
+                          )}
+                        </View>
                       )}
-                    </View>
-                  </LinearGradient>
 
-                  <Text style={styles.sectionLabel}>YOUR UNIQUE LINK</Text>
-                  <View style={[styles.linkCard, { borderColor: themeColor + '50' }]}>
-                    <Ionicons name="link" size={20} color="#888" style={{marginRight: 10}} />
-                    <Text style={styles.linkText} numberOfLines={1}>fixra.ai/ref/{referralCode}</Text>
-                    <TouchableOpacity style={styles.copyBtn} onPress={handleCopyLink}>
-                      <Ionicons name="copy" size={20} color={themeColor} />
-                    </TouchableOpacity>
+                      <View style={[styles.cardBottomRow, {marginTop: 20}]}>
+                        <View style={styles.tagPill}><Text style={styles.cardTagText}>{referralCode}</Text></View>
+                      </View>
+                    </LinearGradient>
                   </View>
-
-                  <View style={{flex: 1}} />
-
-                  <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
-                    <LinearGradient colors={themeGradient as [string, string]} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionBtnGradient}>
-                      <Ionicons name="share-social" size={22} color="#fff" style={{ marginRight: 10 }} />
-                      <Text style={styles.actionBtnText}>Share Now</Text>
+                  
+                  <Text style={styles.sectionLabel}>YOUR LINK</Text>
+                  <TouchableOpacity style={[styles.linkCard, { borderColor: themeColor + '40' }]} onPress={handleCopyLink}>
+                    <Ionicons name="link" size={20} color={themeColor} style={{marginRight: 10}} />
+                    <Text style={styles.linkText} numberOfLines={1}>fixra.ai/ref/{referralCode}</Text>
+                    <Ionicons name="copy-outline" size={20} color="#888" />
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={[styles.actionBtn, { marginTop: 20 }]} onPress={handleShare}>
+                    <LinearGradient colors={themeGradient as [string, string]} style={styles.actionBtnGradient}>
+                      <Ionicons name="logo-whatsapp" size={22} color="#fff" style={{ marginRight: 10 }} />
+                      <Text style={styles.actionBtnText}>{isCreator ? 'Share Creator Link' : 'Share with Friends'}</Text>
                     </LinearGradient>
                   </TouchableOpacity>
-
                 </View>
               )}
             </ScrollView>
-
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={showLegal} animationType="fade" transparent>
+        <View style={styles.legalOverlay}>
+          <View style={styles.legalContent}>
+            <Text style={styles.legalTitle}>Creator Agreement</Text>
+            <ScrollView style={styles.legalScroll}>
+              <Text style={styles.legalText}>
+                <Text style={styles.bold}>1. Brand Protection:</Text> Creators agree to promote FIXRA in a professional manner. Any association with hate speech, racism, or antisemitism will result in immediate termination.{'\n\n'}
+                <Text style={styles.bold}>2. Integrity:</Text> Fraudulent activity or misleading followers regarding AI capabilities is strictly prohibited.{'\n\n'}
+                <Text style={styles.bold}>3. Disassociation:</Text> FIXRA (The Company) reserves the right to terminate any creator partnership immediately and revoke pending balances if the creator’s actions harm the brand's reputation.{'\n\n'}
+                <Text style={styles.bold}>4. Payments:</Text> Commissions are paid via PayPal after manual verification of traffic quality.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity style={[styles.actionBtn, {marginTop: 20}]} onPress={() => setShowLegal(false)}>
+              <LinearGradient colors={['#333', '#000']} style={styles.actionBtnGradient}><Text style={styles.actionBtnText}>Close</Text></LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  // 🌟 גובה מקסימלי שמאפשר למקלדת לדחוף את התוכן למעלה 🌟
-  modalContentWrapper: { width: '100%', maxHeight: '85%' },
-  modalContent: { backgroundColor: '#050012', borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderBottomWidth: 0, minHeight: '60%' },
-  
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'flex-end' },
+  modalContentWrapper: { width: '100%', maxHeight: '92%' },
+  modalContent: { backgroundColor: '#0a0026', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', minHeight: '70%' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center' },
-  title: { fontSize: 22, fontWeight: '900', color: '#ffffff', letterSpacing: 1 },
+  title: { fontSize: 20, fontWeight: '900', color: '#fff', letterSpacing: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
-  iconBtn: { padding: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 15, marginLeft: 10 },
-  
-  centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 200 },
-  
-  // 🌟 יצירת התג 🌟
-  setupContainer: { flex: 1, alignItems: 'center', paddingTop: 20, paddingBottom: 20 },
-  iconCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.02)', justifyContent: 'center', alignItems: 'center', marginBottom: 25, borderWidth: 2, shadowOffset: {width: 0, height: 0}, shadowOpacity: 0.5, shadowRadius: 15 },
-  setupTitle: { fontSize: 26, fontWeight: '900', color: '#fff', marginBottom: 12, letterSpacing: 0.5 },
-  setupDesc: { fontSize: 15, color: '#aaa', textAlign: 'center', marginBottom: 40, paddingHorizontal: 15, lineHeight: 22 },
-  
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 18, paddingHorizontal: 20, width: '100%', height: 65, marginBottom: 30, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  urlPrefix: { color: '#888', fontSize: 17, fontWeight: '600' },
-  input: { flex: 1, color: '#fff', fontSize: 17, fontWeight: '900', height: '100%', letterSpacing: 1 },
-  
-  // 🌟 VIP Dashboard 🌟
-  dashboardContainer: { flex: 1, paddingTop: 10, paddingBottom: 20 },
-  vipCard: { width: '100%', padding: 25, borderRadius: 25, borderWidth: 1, marginBottom: 35, position: 'relative', overflow: 'hidden', shadowOffset: {width: 0, height: 10}, shadowOpacity: 0.3, shadowRadius: 20, elevation: 10 },
-  cardWatermark: { position: 'absolute', right: -20, bottom: -20, transform: [{rotate: '-15deg'}] },
-  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  balanceLabel: { color: '#aaa', fontSize: 12, fontWeight: '800', letterSpacing: 2 },
-  balanceAmount: { color: '#fff', fontSize: 52, fontWeight: '900', marginBottom: 25, letterSpacing: -1 },
+  iconBtn: { padding: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, marginLeft: 10 },
+  centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 300, paddingHorizontal: 30 },
+  setupContainer: { flex: 1, alignItems: 'center', paddingTop: 10 },
+  iconCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderWidth: 2 },
+  setupTitle: { fontSize: 26, fontWeight: '900', color: '#fff', marginBottom: 12, textAlign: 'center' },
+  setupDesc: { fontSize: 14, color: '#aaa', textAlign: 'center', marginBottom: 30, lineHeight: 22 },
+  inputGroup: { width: '100%', marginBottom: 20 },
+  inputLabel: { color: '#888', fontSize: 11, fontWeight: '900', letterSpacing: 1.5, marginBottom: 8, marginLeft: 5 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 16, paddingHorizontal: 20, height: 60, borderWidth: 1 },
+  urlPrefix: { color: '#666', fontSize: 16, fontWeight: 'bold' },
+  input: { flex: 1, color: '#fff', fontSize: 16, fontWeight: '900', height: '100%', letterSpacing: 1 },
+  legalCheckRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 30, marginTop: 10 },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)', marginRight: 12, justifyContent: 'center', alignItems: 'center' },
+  legalCheckText: { color: '#888', fontSize: 14 },
+  legalLink: { fontSize: 14, fontWeight: 'bold', textDecorationLine: 'underline' },
+  actionBtn: { width: '100%', borderRadius: 18, overflow: 'hidden' },
+  actionBtnGradient: { paddingVertical: 18, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' },
+  actionBtnText: { color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 1 },
+  dashboardContainer: { flex: 1 },
+  vipCard: { width: '100%', borderRadius: 24, marginBottom: 30, elevation: 15 },
+  vipCardGradient: { padding: 25, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  balanceLabel: { color: '#888', fontSize: 11, fontWeight: '900', letterSpacing: 2, marginBottom: 5 },
+  balanceAmount: { color: '#fff', fontWeight: '900', letterSpacing: -1 },
   cardBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  cardTagText: { color: 'rgba(255,255,255,0.5)', fontSize: 16, fontWeight: 'bold', letterSpacing: 3, textTransform: 'uppercase' },
-  withdrawBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 20, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20 },
-  withdrawText: { color: '#fff', fontSize: 13, fontWeight: '900', letterSpacing: 0.5 },
-  
-  sectionLabel: { color: '#888', fontSize: 12, fontWeight: '800', letterSpacing: 1.5, marginBottom: 10, marginLeft: 5 },
-  linkCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 18, paddingLeft: 20, paddingRight: 8, height: 65, marginBottom: 20, borderWidth: 1 },
-  linkText: { flex: 1, color: '#fff', fontSize: 16, fontWeight: '600' },
-  copyBtn: { width: 50, height: 50, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 14 },
-  
-  actionBtn: { width: '100%', borderRadius: 20, overflow: 'hidden', marginTop: 10 },
-  actionBtnGradient: { flexDirection: 'row', paddingVertical: 18, justifyContent: 'center', alignItems: 'center' },
-  actionBtnText: { color: '#ffffff', fontSize: 18, fontWeight: '900', letterSpacing: 1 },
-
-  // 🌟 Quest Log (המדריך) 🌟
-  guideContainer: { flex: 1, paddingTop: 10, paddingBottom: 20 },
-  guideTitle: { fontSize: 26, fontWeight: '900', color: '#fff', textAlign: 'center', letterSpacing: 1 },
-  guideSubtitle: { fontSize: 14, color: '#888', textAlign: 'center', marginBottom: 35, marginTop: 5 },
+  tagPill: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  cardTagText: { color: '#fff', fontSize: 14, fontWeight: '900', letterSpacing: 2 },
+  withdrawBtn: { paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#fff', borderRadius: 12 },
+  withdrawText: { color: '#000', fontSize: 12, fontWeight: '900' },
+  sectionLabel: { color: '#888', fontSize: 11, fontWeight: '900', letterSpacing: 2, marginBottom: 10, marginLeft: 5 },
+  linkCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 16, paddingHorizontal: 20, height: 60, marginBottom: 20, borderWidth: 1 },
+  linkText: { flex: 1, color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  guideContainer: { flex: 1, paddingTop: 10 },
+  guideTitle: { fontSize: 26, fontWeight: '900', color: '#fff', textAlign: 'center' },
+  guideSubtitle: { fontSize: 14, color: '#888', textAlign: 'center', marginBottom: 40, marginTop: 5 },
   questTimeline: { paddingLeft: 10, position: 'relative' },
-  questLine: { position: 'absolute', left: 32, top: 20, bottom: 40, width: 2, backgroundColor: 'rgba(255,255,255,0.1)' },
+  questLine: { position: 'absolute', left: 32, top: 20, bottom: 40, width: 2 },
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 35 },
-  stepIconWrapper: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#050012', justifyContent: 'center', alignItems: 'center', marginRight: 20, borderWidth: 2, shadowOffset: {width: 0, height: 0}, shadowOpacity: 0.5, shadowRadius: 10 },
+  stepIconWrapper: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#050012', justifyContent: 'center', alignItems: 'center', marginRight: 20, borderWidth: 2 },
   stepTextContainer: { flex: 1, paddingTop: 2 },
-  stepTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
-  stepDesc: { fontSize: 14, color: '#aaa', lineHeight: 22 },
+  stepTitle: { fontSize: 18, fontWeight: '900', color: '#fff', marginBottom: 6 },
+  stepDesc: { fontSize: 14, color: '#aaa', lineHeight: 20 },
+  legalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center', padding: 25 },
+  legalContent: { backgroundColor: '#111', borderRadius: 30, padding: 25, width: '100%', borderWidth: 1, borderColor: '#333' },
+  legalTitle: { color: '#fff', fontSize: 24, fontWeight: '900', marginBottom: 20, textAlign: 'center' },
+  legalScroll: { maxHeight: 300 },
+  legalText: { color: '#ccc', fontSize: 15, lineHeight: 24 },
+  bold: { fontWeight: 'bold', color: '#fff' }
 });
