@@ -12,7 +12,6 @@ interface PaywallModalProps {
 
 export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
   
-  // 🌟 משתמשים בפונקציית הרכישה האמיתית מה-Context (הלוגיקה המקורית שלך)
   const { purchasePackage, resetToFree, currentPlan } = usePaywall();
 
   const [isCheckoutVisible, setIsCheckoutVisible] = useState(false);
@@ -24,7 +23,6 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
     setIsCheckoutVisible(true);
   };
 
-  // הלוגיקה המקורית שלך שמתחברת ל-RevenueCat (בדיוק כפי שהייתה)
   const handleFinalPurchase = async (paymentMode: 'one-time' | 'monthly') => {
     if (!selectedPlan) return;
 
@@ -76,7 +74,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
               <View style={styles.packsContainer}>
                 
                 {/* ==================================
-                    1. 💖 PRO Pack (Pink Neon) - עיצוב חדש
+                    1. 💖 PRO Pack
                 ================================== */}
                 <View style={styles.packWrapper}>
                   <View style={[styles.badge, { backgroundColor: '#ffcc00' }]}>
@@ -113,15 +111,11 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                       </LinearGradient>
                     </TouchableOpacity>
 
-                    {/* כפתור ONE TIME פנימי של ה-PRO (שפותח את ה-Checkout שלך) */}
                     <View style={styles.oneTimeContainer}>
                       <View style={styles.oneTimeBadge}>
                         <Text style={styles.oneTimeBadgeText}>PRO ONE-TIME 🪙</Text>
                       </View>
-                      <TouchableOpacity 
-                        style={styles.oneTimeBtn} 
-                        onPress={() => handlePlanSelect('PRO')} // משתמש בפונקציה המקורית שלך
-                      >
+                      <TouchableOpacity style={styles.oneTimeBtn} onPress={() => handlePlanSelect('PRO')}>
                          <Text style={styles.oneTimeBtnPrice}>$14.99 <Text style={{fontSize: 10, fontWeight: 'normal'}}>ONLY</Text></Text>
                       </TouchableOpacity>
                     </View>
@@ -130,7 +124,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                 </View>
 
                 {/* ==================================
-                    2. 💎 PREMIUM Pack (Cyan Neon) - עיצוב חדש
+                    2. 💎 PREMIUM Pack
                 ================================== */}
                 <View style={styles.packWrapper}>
                   <View style={[styles.badge, { backgroundColor: '#00e5ff' }]}>
@@ -154,6 +148,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 
                     <View style={styles.featuresListContainer}>
                       <FeatureItem text="Unlimited mission solves" color="#00e5ff" />
+                      <FeatureItem text="Personal AI Assistant 🤖" color="#00e5ff" />
                       <FeatureItem text="AI help (image + text + video)" color="#00e5ff" />
                       <FeatureItem text="All guide links included" color="#00e5ff" />
                       <FeatureItem text="Priority AI (fastest results) ⚡" color="#00e5ff" />
@@ -169,12 +164,8 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                       </LinearGradient>
                     </TouchableOpacity>
 
-                    {/* כפתור ONE TIME פנימי של ה-PREMIUM */}
                     <View style={[styles.oneTimeContainer, { borderColor: '#00e5ff' }]}>
-                      <TouchableOpacity 
-                        style={styles.oneTimeBtn} 
-                        onPress={() => handlePlanSelect('PREMIUM')} // משתמש בפונקציה המקורית שלך
-                      >
+                      <TouchableOpacity style={styles.oneTimeBtn} onPress={() => handlePlanSelect('PREMIUM')}>
                          <Text style={[styles.oneTimeBtnPrice, { color: '#00e5ff' }]}>$14.99 <Text style={{fontSize: 10, fontWeight: 'normal', color: '#aaaaaa'}}>ONLY</Text></Text>
                       </TouchableOpacity>
                     </View>
@@ -186,25 +177,18 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 
               <Text style={styles.bottomFooterText}>Join 10,000 players already using Fixra</Text>
 
-              {/* --- תחילת הקישור שהוספנו --- */}
               <TouchableOpacity onPress={() => Linking.openURL('https://quirky-match-61c.notion.site/FIXRA-Terms-of-Service-Privacy-Policy-34745f65405f80d2b137c2f4ddd7ae2e')}>
                 <Text style={{ color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginTop: 15, textDecorationLine: 'underline' }}>
                   Terms of Service & Privacy Policy
                 </Text>
               </TouchableOpacity>
-              {/* --- סוף הקישור שהוספנו --- */}
 
               <View style={{ height: 40 }} />
             </ScrollView>
           </SafeAreaView>
-
-             
-            
-          
         </LinearGradient>
       </View>
 
-      {/* הלוגיקה המקורית של ציר הזמן והרכישה שלך */}
       <CheckoutModal 
         visible={isCheckoutVisible} 
         planName={selectedPlan || ''}
@@ -217,8 +201,6 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 }
 
 // ==========================================
-// קומפוננטת שורת ה-V
-// ==========================================
 function FeatureItem({ text, color }: { text: string, color: string }) {
   return (
     <View style={styles.featureRow}>
@@ -228,8 +210,6 @@ function FeatureItem({ text, color }: { text: string, color: string }) {
   );
 }
 
-// ==========================================
-// קומפוננטת ציר הזמן (Checkout Modal) - הלוגיקה והעיצוב המקוריים שלך!
 // ==========================================
 function TimelineStep({ icon, title, desc, isLast = false }: { icon: string, title: string, desc: string, isLast?: boolean }) {
   return (
@@ -380,7 +360,6 @@ const styles = StyleSheet.create({
   packsContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 2 },
   packWrapper: { width: '48.5%', position: 'relative' },
   
-  // העיצוב הראשי של כרטיסיית החנות (מעוגל ועם מסגרת)
   packInner: { 
     borderRadius: 20, 
     padding: 12, 
@@ -413,7 +392,6 @@ const styles = StyleSheet.create({
   actionButton: { width: '100%', paddingVertical: 12, borderRadius: 25, alignItems: 'center' },
   actionButtonText: { color: '#ffffff', fontSize: 14, fontWeight: 'bold', letterSpacing: 0.5 },
 
-  // עיצוב כפתור ה-ONE TIME למטה
   oneTimeContainer: {
     width: '100%',
     borderWidth: 1,
@@ -451,7 +429,6 @@ const styles = StyleSheet.create({
 
   bottomFooterText: { color: '#666666', fontSize: 13, textAlign: 'center', marginTop: 40, fontWeight: '500' },
 
-  // --- סגנונות מקוריים של הלוגיקה שלך (Checkout) ---
   checkoutOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end', zIndex: 100 },
   checkoutSheet: { backgroundColor: '#0a0026', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, paddingBottom: Platform.OS === 'ios' ? 50 : 30, borderWidth: 1, borderColor: '#333', borderBottomWidth: 0 },
   checkoutClose: { position: 'absolute', top: 20, right: 20, zIndex: 10, padding: 5 },

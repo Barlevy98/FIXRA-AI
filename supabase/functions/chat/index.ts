@@ -23,9 +23,19 @@ interface AIResponseJSON {
 }
 
 const safeString = (val: any) => typeof val === 'string' ? val : '';
-const safeNumber = (val: any) => typeof val === 'number' ? val : 0;
-
 const youtubeCache = new Map<string, any>();
+
+// 🌟 OPTIMIZATION: Singleton Supabase Client 🌟
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+let supabaseSingleton: any = null;
+
+function getSupabaseClient() {
+  if (!supabaseSingleton && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    supabaseSingleton = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  }
+  return supabaseSingleton;
+}
 
 function safeParseJSON(str: string): any {
   try { return JSON.parse(str); } catch(e) {}
@@ -43,86 +53,134 @@ Deno.serve(async (req) => {
   try {
     const { userText, media, language, previousMessages, userPlan, gameCategory, userId } = await req.json()
 
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    const YOUTUBE_API_KEY = Deno.env.get('YOUTUBE_API_KEY');
-    const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY');
-    
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    // --- 🛡️ 1. ABUSE PROTECTION 🛡️ ---
+    const MAX_TEXT_LENGTH = 1500;
+    const MAX_MEDIA_ITEMS = 3;
+    const MAX_TOTAL_BASE64_CHARS = 14000000; // ~10MB
 
-    if (!GEMINI_API_KEY || !YOUTUBE_API_KEY || !GROQ_API_KEY) throw new Error("Missing API Keys");
+    if (userText && userText.length > MAX_TEXT_LENGTH) {
+      return new Response(JSON.stringify({ isError: true, errorType: "abuse", message: "Your message is too long. Please keep it concise.", category: gameCategory || 'General' }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const hasMedia = media && media.base64 && (typeof media.base64 === 'string' || media.base64.length > 0);
-
-    let serverValidatedPlan = userPlan; 
-    let isActuallyPro = false;
-    let isActuallyPremium = false;
     
-    if (userId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    let mediaArray: string[] = [];
+    if (hasMedia) {
+      mediaArray = Array.isArray(media.base64) ? media.base64 : [media.base64];
       
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('current_plan, is_pro, daily_message_count, max_messages, last_daily_reset, message_count, bonus_solves_balance')
-        .eq('user_id', userId)
-        .single();
-
-      if (error) {
-         console.warn(`[Supabase Fetch Error] User ${userId}: ${error.message}`);
+      if (media.type === 'image' && mediaArray.length > MAX_MEDIA_ITEMS) {
+        return new Response(JSON.stringify({ isError: true, errorType: "abuse", message: `Maximum ${MAX_MEDIA_ITEMS} images allowed.`, category: gameCategory || 'General' }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      if (profile) {
-        serverValidatedPlan = profile.current_plan;
-        isActuallyPro = profile.is_pro || serverValidatedPlan?.startsWith('PRO') || serverValidatedPlan === 'PREMIUM';
-        isActuallyPremium = serverValidatedPlan === 'PREMIUM';
-        
-        const now = Date.now();
-        const oneDayMs = 24 * 60 * 60 * 1000;
-        let currentCount = profile.daily_message_count || 0;
-        let lastReset = profile.last_daily_reset || 0;
-
-        if (now - lastReset >= oneDayMs) {
-          currentCount = 0;
-          lastReset = now;
-        }
-
-        const limit = profile.max_messages || (isActuallyPro ? 200 : 20);
-        let isUsingBonus = false;
-
-        if (currentCount >= limit) {
-          if (profile.bonus_solves_balance && profile.bonus_solves_balance > 0) {
-             isUsingBonus = true; 
-          } else {
-             console.warn(`[RATE LIMIT] User ${userId} blocked. Count: ${currentCount}/${limit}. No bonus left.`);
-             // 🌟 עודכן פה ל-5 חברים 🌟
-             return new Response(JSON.stringify({
-               isError: true,
-               errorType: "rate_limit", 
-               message: "מכסת ההודעות היומית שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל 2 פתרונות חינם, או שדרג לפרימיום!",
-               category: gameCategory || 'General'
-             }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-          }
-        }
-
-        const updates: any = { message_count: (profile.message_count || 0) + 1 };
-        
-        if (isUsingBonus) {
-           updates.bonus_solves_balance = profile.bonus_solves_balance - 1;
-        } else {
-           updates.daily_message_count = currentCount + 1;
-           updates.last_daily_reset = lastReset;
-        }
-
-        await supabase.from('user_profiles').update(updates).eq('user_id', userId);
+      const totalSizeChars = mediaArray.reduce((acc: number, img: string) => acc + img.length, 0);
+      if (totalSizeChars > MAX_TOTAL_BASE64_CHARS) {
+        return new Response(JSON.stringify({ isError: true, errorType: "abuse", message: "Media files are too large. Please reduce quality or length (Max ~10MB).", category: gameCategory || 'General' }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
 
-    if (hasMedia) {
-      if (media.type === 'video' && !isActuallyPremium) {
-        return new Response(JSON.stringify({ isError: true, errorType: "fatal", message: "Video analysis requires a Premium subscription.", category: gameCategory || 'General' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    const YOUTUBE_API_KEY = Deno.env.get('YOUTUBE_API_KEY');
+    const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY');
+
+    if (!GEMINI_API_KEY || !YOUTUBE_API_KEY || !GROQ_API_KEY) throw new Error("Missing API Keys");
+
+    // --- 💼 הגדרות מודל עסקי ולימיטים 💼 ---
+    let serverValidatedPlan = userPlan || 'Free'; 
+    let isActuallyPro = false;
+    let isActuallyPremium = false;
+    
+    let limit = 3;
+    let cycleMs = 86400000; // 24 שעות
+    let isTotalLimit = false; // האם זה מנוי שלא מתאפס לעולם
+    let hasQuota = true;
+    
+    const supabase = getSupabaseClient();
+    
+    if (userId && supabase) {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('current_plan, is_pro, lifetime_messages, cycle_used_messages, cycle_start_date, bonus_solves_balance')
+        .eq('user_id', userId)
+        .single();
+
+      if (profile) {
+        serverValidatedPlan = profile.current_plan || 'Free';
+        const planLower = serverValidatedPlan.toLowerCase();
+        
+        isActuallyPremium = planLower.includes('premium');
+        isActuallyPro = isActuallyPremium || profile.is_pro || planLower.includes('pro');
+
+        if (isActuallyPremium) {
+          limit = 500;
+          cycleMs = 2592000000; 
+        } else if (isActuallyPro) {
+          // התיקון: מחפשים בדיוק 'onetime' ולא רק 'one'
+          if (planLower === 'pro_onetime' || planLower.includes('onetime') || planLower.includes('חד פעמי')) {
+            limit = 50;
+            isTotalLimit = true;
+          } else {
+            limit = 50;
+            cycleMs = 2592000000; 
+          }
+        } else {
+          limit = 3;
+          cycleMs = 86400000; 
+        }
+
+        const now = Date.now();
+        const bonus = profile.bonus_solves_balance || 0;
+        let currentCycleCount = profile.cycle_used_messages || 0;
+
+        // 🌟 מנגנון AUTO-DOWNGRADE (נפילה חופשית לחינם) למנוי חד פעמי 🌟
+        if (isTotalLimit && currentCycleCount >= limit && bonus <= 0) {
+            console.log(`[DOWNGRADE] User ${userId} finished One-Time Plan. Downgrading to Free.`);
+            
+            // עדכון בדאטה בייס בזמן אמת!
+            await supabase.from('user_profiles').update({
+                current_plan: 'Free',
+                is_pro: false,
+                cycle_used_messages: 0, // איפוס כדי שיוכל להשתמש ב-3 בחינם מיד
+                cycle_start_date: now
+            }).eq('user_id', userId);
+            
+            // עדכון המשתנים כדי שהבקשה הנוכחית של המשתמש לא תידחה
+            serverValidatedPlan = 'Free';
+            isActuallyPro = false;
+            limit = 3;
+            cycleMs = 86400000;
+            isTotalLimit = false;
+            currentCycleCount = 0;
+            profile.cycle_start_date = now;
+        }
+
+        // --- 🚦 הצצה מהירה (Pre-Check) 🚦 ---
+        if (isTotalLimit) {
+          if (currentCycleCount >= limit && bonus <= 0) hasQuota = false;
+        } else {
+          const lastReset = profile.cycle_start_date || 0;
+          const isNewCycle = (now - lastReset) >= cycleMs;
+          const activeCount = isNewCycle ? 0 : currentCycleCount;
+          if (activeCount >= limit && bonus <= 0) hasQuota = false;
+        }
       }
-      if (media.type === 'image' && !isActuallyPro && !isActuallyPremium) {
-         return new Response(JSON.stringify({ isError: true, errorType: "fatal", message: "Image analysis requires a Pro subscription.", category: gameCategory || 'General' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+      if (!hasQuota) {
+        return new Response(JSON.stringify({
+          isError: true,
+          errorType: "rate_limit", 
+          message: "מכסת ההודעות שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל פתרונות חינם, או שדרג לפרימיום!",
+          category: gameCategory || 'General'
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // --- 🛡️ VALIDATE PERMISSIONS FIRST 🛡️ ---
+      if (hasMedia) {
+        if (media.type === 'video' && !isActuallyPremium) {
+          return new Response(JSON.stringify({ isError: true, errorType: "fatal", message: "Video analysis requires a Premium subscription.", category: gameCategory || 'General' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (media.type === 'image' && !isActuallyPro && !isActuallyPremium) {
+           return new Response(JSON.stringify({ isError: true, errorType: "fatal", message: "Image analysis requires a Pro subscription.", category: gameCategory || 'General' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
       }
     }
 
@@ -139,16 +197,12 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
 2. 'taskSummary' MUST be a highly specific actionable gameplay tip.
 3. NEVER return both 'message' and 'taskSummary'. One MUST be empty.
 4. "isFollowUp": Evaluate the chat history. If the user's current query is a continuation or follow-up question about the EXACT SAME boss, mission, or topic as the immediate previous conversation, set this to true. If the user is asking about a NEW boss, NEW mission, or NEW topic, set this to false.
-5. 🚨 NO REPETITION RULE: If 'isFollowUp' is true, you MUST NOT repeat the same advice from your previous messages. You must read the history and provide a completely NEW tip, alternative strategy, or deeper detail (e.g., Phase 2 tactics, specific attacks to dodge, or different gear to use).`;
+5. 🚨 NO REPETITION RULE: If 'isFollowUp' is true, you MUST NOT repeat the same advice from your previous messages. You must read the history and provide a completely NEW tip, alternative strategy, or deeper detail.`;
 
     if (isActuallyPremium) {
       systemInstruction += `
 6. 💎 PREMIUM MICRO-CONTEXT PROTOCOL: You are analyzing a Premium user's gameplay. Detect not only the mission, but the CURRENT EXACT MOMENT.
-   If possible, based on the user's text or uploaded media, you MUST identify:
-   - The specific Boss Phase (e.g., "Phase 2").
-   - The specific current attack pattern or animation.
-   - The exact mistake the player is making right now (e.g., "dodging too early", "wrong elemental weapon").
-   Respond with a PRECISE ACTION for THAT exact moment. Do not give general advice. Be highly specific to what is happening on screen or what the user just described.`;
+   If possible, based on the user's text or uploaded media, you MUST identify the specific Boss Phase, current attack pattern, or exact mistake the player is making.`;
     }
 
     systemInstruction += `
@@ -163,88 +217,91 @@ JSON RESPONSE FORMAT:
   "quickFixTitle": "...",
   "message": "...",
   "taskSummary": "...",
-  "youtubeQuery": "[Game Name in English] [Mission/Boss in English] walkthrough", 
-  "wikiQuery": "[Game Name in English] [Mission in English] wiki guide",
-  "ignQuery": "[Game Name in English] [Mission in English] ign walkthrough",
-  "polygonQuery": "[Game Name in English] [Mission in English] polygon guide",
-  "mapgenieQuery": "[Game Name in English] [Item/Location in English] mapgenie",
-  "fextralifeQuery": "[Game Name in English] [Boss/Quest in English] fextralife",
+  "youtubeQuery": "...", 
+  "wikiQuery": "...",
+  "ignQuery": "...",
+  "polygonQuery": "...",
+  "mapgenieQuery": "...",
+  "fextralifeQuery": "...",
   "category": "The official Game Name (or 'Unknown')"
 }`;
 
     let history = (previousMessages || []).filter((msg: any) => msg.text && !msg.isLoading).slice(-6);
-    let rawParsed: any;
-    let responseText = "";
+    let rawParsed: any = null;
     let providerUsed = "";
+    
+    // --- 🤖 3. AI INVOCATION WITH RETRY LOGIC 🤖 ---
+    let attemptCount = 0;
+    const MAX_RETRIES = 2;
+    let lastError = null;
 
-    if (hasMedia) {
-      providerUsed = "Gemini-2.5-Flash (Media)";
-      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction });
-      
-      let geminiHistory = history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'model', parts: [{ text: msg.text as string }] }));
-      while (geminiHistory.length > 0 && geminiHistory[0].role === 'model') geminiHistory.shift();
+    while (attemptCount < MAX_RETRIES && !rawParsed) {
+      attemptCount++;
+      let responseText = "";
 
-      const chat = model.startChat({ history: geminiHistory });
-      const promptParts: any[] = [];
-      if (media.type === 'image') promptParts.push({ inlineData: { data: media.base64, mimeType: 'image/jpeg' } });
-      else media.base64.forEach((img: string) => promptParts.push({ inlineData: { data: img, mimeType: 'image/jpeg' } }));
-      
-      promptParts.push(`User query: ${userText || 'Help me with this part of the game.'}`);
-      const result = await chat.sendMessage(promptParts);
-      responseText = result.response.text();
-
-    } else if (isActuallyPro) { 
-       providerUsed = "Gemini-2.5-Flash-Lite (Premium)";
-       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', systemInstruction });
-       let geminiHistory = history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'model', parts: [{ text: msg.text as string }] }));
-       while (geminiHistory.length > 0 && geminiHistory[0].role === 'model') geminiHistory.shift();
-       const chat = model.startChat({ history: geminiHistory });
-       const result = await chat.sendMessage([`User query: ${userText}`]);
-       responseText = result.response.text();
-    } else {
-      let groqSuccess = false;
-      const groqMessages = [{ role: "system", content: systemInstruction }, ...history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text })), { role: "user", content: `User query: ${userText}` }];
-
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: groqMessages, response_format: { type: "json_object" }, temperature: 0.2 }),
-            signal: AbortSignal.timeout(8000) 
-          });
-
-          if (!groqRes.ok) throw new Error(`Groq Status: ${groqRes.status}`);
-          const groqData = await groqRes.json();
-          responseText = groqData.choices[0].message.content;
+      try {
+        if (hasMedia) {
+          providerUsed = "Gemini-2.5-Flash (Media)";
+          const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+          const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction });
           
-          safeParseJSON(responseText);
-          
-          providerUsed = `Groq (Attempt ${attempt})`;
-          groqSuccess = true;
-          break; 
+          let geminiHistory = history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'model', parts: [{ text: msg.text as string }] }));
+          while (geminiHistory.length > 0 && geminiHistory[0].role === 'model') geminiHistory.shift();
 
-        } catch (e: any) {
-          console.warn(`[Groq Warning] Attempt ${attempt} failed: ${e.message}`);
-          if (attempt === 2) console.error("Groq totally failed. Falling back.");
+          const chat = model.startChat({ history: geminiHistory });
+          const promptParts: any[] = [];
+          
+          if (media.type === 'image') {
+             mediaArray.forEach((img: string) => promptParts.push({ inlineData: { data: img, mimeType: 'image/jpeg' } }));
+          } else if (media.type === 'video') {
+             promptParts.push({ inlineData: { data: mediaArray[0], mimeType: 'video/mp4' } });
+          }
+          
+          promptParts.push(`User query: ${userText || 'Analyze this.'}`);
+          const result = await chat.sendMessage(promptParts);
+          responseText = result.response.text();
+
+        } else if (isActuallyPro) { 
+           providerUsed = isActuallyPremium ? "Gemini-2.5-Flash-Lite (Premium)" : "Gemini-2.5-Flash-Lite (Pro)"; 
+           const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+           const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', systemInstruction });
+           let geminiHistory = history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'model', parts: [{ text: msg.text as string }] }));
+           while (geminiHistory.length > 0 && geminiHistory[0].role === 'model') geminiHistory.shift();
+           const chat = model.startChat({ history: geminiHistory });
+           const result = await chat.sendMessage([`User query: ${userText}`]);
+           responseText = result.response.text();
+        } else {
+           const groqMessages = [{ role: "system", content: systemInstruction }, ...history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text })), { role: "user", content: `User query: ${userText}` }];
+           const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: groqMessages, response_format: { type: "json_object" }, temperature: 0.2 }),
+              signal: AbortSignal.timeout(8000) 
+           });
+
+           if (!groqRes.ok) throw new Error(`Groq Status: ${groqRes.status}`);
+           const groqData = await groqRes.json();
+           responseText = groqData.choices[0].message.content;
+           providerUsed = "Groq";
         }
-      }
 
-      if (!groqSuccess) {
-        providerUsed = "Gemini-2.5-Flash-Lite (Fallback)";
-        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-        const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', systemInstruction });
-        let fallbackHistory = history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'model', parts: [{ text: msg.text as string }] }));
-        while (fallbackHistory.length > 0 && fallbackHistory[0].role === 'model') fallbackHistory.shift();
-        const chat = fallbackModel.startChat({ history: fallbackHistory });
-        const result = await chat.sendMessage([`User query: ${userText}`]);
-        responseText = result.response.text();
+        rawParsed = safeParseJSON(responseText);
+
+        if (rawParsed.category === 'Unknown' || (rawParsed.message && rawParsed.message.includes('🎮'))) {
+            rawParsed.youtubeQuery = "";
+            rawParsed.wikiQuery = "";
+            rawParsed.category = "Unknown";
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[AI ERROR] Attempt ${attemptCount} failed: ${err.message}`);
+        rawParsed = null; 
       }
     }
 
-    rawParsed = safeParseJSON(responseText);
+    if (!rawParsed) {
+       throw new Error(`AI generation failed after ${MAX_RETRIES} attempts. Last error: ${lastError?.message}`);
+    }
 
     const aiResponseJSON: AIResponseJSON = {
       isFollowUp: rawParsed.isFollowUp === true, 
@@ -261,7 +318,6 @@ JSON RESPONSE FORMAT:
     };
 
     if (aiResponseJSON.isFollowUp) {
-        console.log(`[COST SAVER] Follow-up query detected. Stripping search links.`);
         aiResponseJSON.youtubeQuery = "";
         aiResponseJSON.wikiQuery = "";
         aiResponseJSON.ignQuery = "";
@@ -272,7 +328,7 @@ JSON RESPONSE FORMAT:
 
     let allAvailableLinks: any[] = [];
     
-    if (!aiResponseJSON.message?.includes("🎮")) {
+    if (aiResponseJSON.category !== 'Unknown') {
       const rawYtQ = aiResponseJSON.youtubeQuery || '';
       if (rawYtQ && YOUTUBE_API_KEY) {
           if (youtubeCache.has(rawYtQ)) {
@@ -290,7 +346,7 @@ JSON RESPONSE FORMAT:
                       if (youtubeCache.size > 200) youtubeCache.clear(); 
                   }
                 }
-             } catch(e: any) { console.error("YouTube Error:", e.message); }
+             } catch(e: any) { console.warn("YouTube Warning:", e.message); }
           }
       }
 
@@ -312,8 +368,27 @@ JSON RESPONSE FORMAT:
 
     const finalMessageText = [aiResponseJSON.message, formattedSummary].filter(text => text && text.trim().length > 0).join('\n\n');
 
+    // --- 🚦 FINAL STEP: POST-BILLING 🚦 ---
+    if (userId && supabase) {
+      const { data: isAllowed, error: rpcError } = await supabase.rpc('consume_chat_allowance', { 
+        p_user_id: userId, 
+        p_max_messages: limit,
+        p_cycle_ms: cycleMs,
+        p_is_total_limit: isTotalLimit
+      });
+
+      if (!isAllowed || rpcError) {
+         return new Response(JSON.stringify({
+            isError: true,
+            errorType: "rate_limit", 
+            message: "מכסת ההודעות שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל פתרונות חינם, או שדרג לפרימיום!",
+            category: gameCategory || 'General'
+         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     const latency = Date.now() - reqStartTime;
-    console.log(`[SUCCESS] User: ${userId || 'Anon'} | Plan: ${serverValidatedPlan} | Provider: ${providerUsed} | Latency: ${latency}ms`);
+    console.log(`[SUCCESS] User: ${userId || 'Anon'} | Provider: ${providerUsed} | Latency: ${latency}ms`);
 
     return new Response(JSON.stringify({
       message: finalMessageText,
@@ -324,7 +399,7 @@ JSON RESPONSE FORMAT:
 
   } catch (error: any) {
     console.error(`[FATAL ERROR] Latency: ${Date.now() - reqStartTime}ms | Reason:`, error.message);
-    return new Response(JSON.stringify({ isError: true, message: "Server encountered an error processing your request.", errorType: "fatal" }), 
+    return new Response(JSON.stringify({ isError: true, message: "Server encountered an error processing your request. Please try again.", errorType: "fatal" }), 
     { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 })

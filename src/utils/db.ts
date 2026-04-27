@@ -112,11 +112,12 @@ export const markTutorialAsSeen = async (clerkToken: string, userId: string) => 
   return true;
 };
 
+// 🌟 העדכון כאן: מתאים לשמות החדשים בדאטה-בייס! 🌟
 export const getUserSubscriptionData = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { data, error } = await supabase
     .from('user_profiles')
-    .select('message_count, max_messages, current_plan, is_pro, last_reset, daily_message_count, last_daily_reset, has_used_premium_trial')
+    .select('lifetime_messages, cycle_limit, current_plan, is_pro, cycle_used_messages, cycle_start_date, has_used_premium_trial')
     .eq('user_id', userId)
     .single();
 
@@ -205,7 +206,6 @@ export const submitCreatorApplication = async (clerkToken: string, userId: strin
   return { success: true };
 };
 
-// 🌟 עודכן ליעד של 5 חברים = 2 פתרונות 🌟
 export const claimInviteReward = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   
@@ -217,11 +217,9 @@ export const claimInviteReward = async (clerkToken: string, userId: string) => {
     
   if (fetchErr || !data) return { success: false, error: 'Could not fetch data' };
   
-  // מחשב כמה נרשמו פחות מה שהוא כבר פדה (כפול 5 כי כל מנה היא 5 חברים)
   const unclaimed = (data.registered_invites_count || 0) - ((data.claimed_invites_milestones || 0) * 5);
   if (unclaimed < 5) return { success: false, error: 'Not enough invites to claim' };
 
-  // מוסיף 2 פתרונות לכספת, ומעדכן שהוא פדה עוד אבן דרך אחת
   const newBonus = (data.bonus_solves_balance || 0) + 2;
   const newClaimed = (data.claimed_invites_milestones || 0) + 1;
 

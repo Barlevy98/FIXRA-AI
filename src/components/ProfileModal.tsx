@@ -22,7 +22,17 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets(); 
   
-  const { isPro, currentPlan, chatLanguage, resetToFree, dailyCount, messageCount, maxMessages } = usePaywall();
+  // 🌟 משיכת הנתונים והמרה לשמות החדשים וההגיוניים שלנו 🌟
+  const { 
+    isPro, 
+    currentPlan, 
+    chatLanguage, 
+    resetToFree, 
+    lifetimeMessages, 
+    cycleUsedMessages,  
+    cycleLimit,        
+    cycleStartDate  
+  } = usePaywall();
   
   const [showPlanDetails, setShowPlanDetails] = useState(false);
   const [showAffiliateModal, setShowAffiliateModal] = useState(false);
@@ -33,28 +43,46 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
 
   const t = getTranslation(chatLanguage);
 
+  const safeLifetime = lifetimeMessages || 0;
+  const safeUsed = cycleUsedMessages || 0;
+  const safeLimit = cycleLimit || (isPro ? 50 : 3);
+  const safeStartDate = cycleStartDate || Date.now();
+
   const isPremium = currentPlan === 'PREMIUM';
-  const isProPlan = currentPlan.startsWith('PRO');
+  const planLower = currentPlan.toLowerCase();
+  const isProPlan = planLower.startsWith('pro');
+  const isOneTime = planLower.includes('one') || planLower.includes('time') || planLower.includes('חד');
   const isFree = currentPlan === 'Free';
 
   const themeColor = isPremium ? '#00e5ff' : isProPlan ? '#ff00cc' : '#aaaaaa';
 
-  // 🌟 פונקציות העזר שהוחזרו 🌟
+  // 📅 חישוב תאריך החידוש הבא 📅
+  let renewalText = '';
+  if (isPremium) {
+    renewalText = 'Auto-renews monthly';
+  } else if (isOneTime) {
+    renewalText = 'Lifetime Plan - No Expiration';
+  } else {
+    const cycleMs = isProPlan ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const nextDate = new Date(safeStartDate + cycleMs);
+    renewalText = `Resets on ${nextDate.toLocaleDateString('he-IL')}`;
+  }
+
   const getActivePlanFeatures = () => {
     switch(currentPlan) {
       case 'PREMIUM': 
         return ['Unlimited mission solves', 'AI video & image analysis', 'Unlimited guide links', 'No ads', 'Fastest results ⚡', 'Priority processing'];
       case 'PRO_monthly':
       case 'PRO_onetime': 
-        return ['50 mission solves per month', 'AI image analysis', '3 guide links per solution', 'Priority support'];
+        return ['50 mission solves', 'AI image analysis', '3 guide links per solution', 'Priority support'];
       default: 
         return ['3 free messages per day', 'Basic AI text help', 'Ads included'];
     }
   };
 
   const getDisplayPlanName = () => {
-    if (currentPlan === 'PREMIUM') return 'FIXRA PREMIUM';
-    if (currentPlan.startsWith('PRO')) return 'FIXRA PRO';
+    if (isPremium) return 'FIXRA PREMIUM';
+    if (isProPlan) return isOneTime ? 'FIXRA PRO (ONE-TIME)' : 'FIXRA PRO';
     return 'FREE TIER';
   };
 
@@ -132,10 +160,11 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                   </View>
                 </View>
                 
+                {/* 🌟 שורת הסטטיסטיקות המעודכנת 🌟 */}
                 <View style={styles.statsRow}>
                   <View style={styles.statBox}>
-                    <Text style={styles.statNumber}>{messageCount}</Text>
-                    <Text style={styles.statLabel}>AI Solves</Text>
+                    <Text style={styles.statNumber}>{safeLifetime}</Text>
+                    <Text style={styles.statLabel}>LIFETIME SOLVES</Text>
                   </View>
                   <View style={styles.statDivider} />
                   <View style={styles.statBox}>
@@ -144,21 +173,17 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                         <Text style={styles.statNumber}>∞</Text>
                         <Text style={styles.statLabel}>UNLIMITED</Text>
                       </>
-                    ) : isProPlan ? (
-                      <>
-                        <Text style={styles.statNumber}>{messageCount}/{maxMessages}</Text>
-                        <Text style={styles.statLabel}>MONTHLY LIMIT</Text>
-                      </>
                     ) : (
                       <>
-                        <Text style={styles.statNumber}>{dailyCount}/3</Text>
-                        <Text style={styles.statLabel}>DAILY LIMIT</Text>
+                        <Text style={styles.statNumber}>{safeUsed}/{safeLimit}</Text>
+                        <Text style={styles.statLabel}>{isOneTime ? 'TOTAL LIMIT' : isProPlan ? 'MONTHLY LIMIT' : 'DAILY LIMIT'}</Text>
                       </>
                     )}
                   </View>
                 </View>
               </LinearGradient>
 
+              {/* 🌟 כרטיסיית המנוי עם התאריך ופס ההתקדמות 🌟 */}
               <View style={styles.cardWrapper}>
                 <Text style={styles.sectionTitle}>Subscription</Text>
                 <TouchableOpacity activeOpacity={0.8} onPress={() => setShowPlanDetails(true)}>
@@ -167,14 +192,15 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                       <Ionicons name="shield-checkmark" size={24} color={themeColor} />
                       <View style={styles.cardTextContent}>
                         <Text style={styles.cardMainText}>Active Plan</Text>
-                        <Text style={[styles.cardSubText, { color: themeColor }]}>{isPremium ? 'Fixra Premium - Unlimited' : isProPlan ? 'Fixra Pro' : 'Free Tier'}</Text>
+                        <Text style={[styles.cardSubText, { color: themeColor }]}>{getDisplayPlanName()}</Text>
+                        <Text style={styles.renewalDateText}>{renewalText}</Text>
                       </View>
                       <Ionicons name="chevron-forward" size={20} color="#555" />
                     </View>
                     {!isPremium && (
                       <View style={styles.progressContainer}>
                         <View style={styles.progressTrack}>
-                          <View style={[styles.progressFill, { width: `${isProPlan ? Math.min((messageCount / maxMessages) * 100, 100) : Math.min((dailyCount / 3) * 100, 100)}%`, backgroundColor: themeColor }]} />
+                          <View style={[styles.progressFill, { width: `${Math.min((safeUsed / safeLimit) * 100, 100)}%`, backgroundColor: themeColor }]} />
                         </View>
                       </View>
                     )}
@@ -211,10 +237,9 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
           <AffiliateModal visible={showAffiliateModal} onClose={() => setShowAffiliateModal(false)} mode={affiliateMode} />
           <SettingsScreen visible={isSettingsVisible} onClose={() => setIsSettingsVisible(false)} />
 
-          {/* 🌟 המודל שחזר מן המתים: Plan Details 🌟 */}
           <Modal animationType="slide" transparent={true} visible={showPlanDetails} onRequestClose={() => setShowPlanDetails(false)}>
             <View style={styles.bottomSheetOverlay}>
-              <View style={[styles.bottomSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : 20, borderColor: themeColor }]}>
+            <View style={[styles.bottomSheet, { paddingBottom: Math.max(insets.bottom + 20, 40), borderColor: themeColor }]}>
                 <View style={styles.bottomSheetHeader}>
                   <Text style={styles.bottomSheetTitle}>Plan Details</Text>
                   <TouchableOpacity onPress={() => setShowPlanDetails(false)} style={styles.iconBtn}>
@@ -305,6 +330,7 @@ const styles = StyleSheet.create({
   cardTextContent: { flex: 1, marginLeft: 15 },
   cardMainText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   cardSubText: { fontSize: 13, marginTop: 2, fontWeight: '600' },
+  renewalDateText: { fontSize: 11, color: '#888', marginTop: 4, fontWeight: '500' },
   progressContainer: { marginTop: 15 },
   progressTrack: { width: '100%', height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
@@ -327,7 +353,6 @@ const styles = StyleSheet.create({
   cancelBtn: { padding: 10 },
   cancelBtnText: { color: '#888', fontSize: 14, fontWeight: 'bold' },
 
-  // 🌟 סטיילים למודל ה-Plan Details שהוחזר 🌟
   bottomSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   bottomSheet: { backgroundColor: '#0a0026', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 30, borderWidth: 1 },
   bottomSheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },

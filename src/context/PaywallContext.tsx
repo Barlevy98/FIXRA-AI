@@ -4,15 +4,14 @@ import { useUser, useAuth } from '@clerk/clerk-expo';
 import { getUserSubscriptionData, updateSubscriptionData, updateUserLanguage } from '../utils/db';
 import Purchases, { PurchasesPackage } from 'react-native-purchases';
 
-const DAILY_FREE_LIMIT = 3;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 type PaywallContextType = {
-  dailyCount: number;
-  messageCount: number;
-  maxMessages: number;
-  incrementMessageCount: () => Promise<void>;
+  cycleUsedMessages: number;
+  lifetimeMessages: number;
+  cycleLimit: number;
+  cycleStartDate: number;
   hasReachedLimit: boolean;
   isPro: boolean;
   currentPlan: string; 
@@ -23,6 +22,8 @@ type PaywallContextType = {
   hasUsedTrial: boolean;
   isTrialActive: boolean; 
   startPremiumTrial: () => Promise<boolean>;
+  refreshSubscription: () => Promise<void>; 
+  incrementLocalCounter: () => void; // 🌟 הוספנו את זה כדי שה-UI יתעדכן מיד!
 };
 
 const PaywallContext = createContext<PaywallContextType | undefined>(undefined);
@@ -31,9 +32,11 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
   const { user } = useUser();
   const { getToken } = useAuth(); 
   
-  const [dailyCount, setDailyCount] = useState(0);
-  const [messageCount, setMessageCount] = useState(0);
-  const [maxMessages, setMaxMessages] = useState(0);
+  const [cycleUsedMessages, setCycleUsedMessages] = useState(0);
+  const [lifetimeMessages, setLifetimeMessages] = useState(0);
+  const [cycleLimit, setCycleLimit] = useState(3);
+  const [cycleStartDate, setCycleStartDate] = useState(Date.now());
+  
   const [isPro, setIsPro] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<string>('Free'); 
   const [chatLanguage, setChatLanguage] = useState('English'); 
@@ -63,32 +66,37 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       const now = Date.now();
 
       if (data) {
-        let currentCount = data.message_count || 0;
-        let lastReset = data.last_reset || now;
-        let currentDailyCount = data.daily_message_count || 0;
-        let lastDailyReset = data.last_daily_reset || now;
+        let usedCount = data.cycle_used_messages || 0;
+        let lifetime = data.lifetime_messages || 0;
+        let limit = data.cycle_limit || 3;
+        let startDate = data.cycle_start_date || now;
         let plan = data.current_plan || 'Free';
         
-        let maxMsg = plan === 'Free' ? 0 : (data.max_messages || 0);
-
         let updates: any = {};
         let needsUpdate = false;
 
-        const isMonthlyPlan = plan === 'PREMIUM' || plan === 'PRO_monthly';
+        const isMonthly = plan === 'PREMIUM' || plan === 'PRO_monthly';
+        const isOneTime = plan === 'PRO_onetime';
+        const cycleMs = isMonthly ? THIRTY_DAYS_MS : ONE_DAY_MS;
 
-        if (now - lastReset >= THIRTY_DAYS_MS && isMonthlyPlan) {
-          currentCount = 0;
-          lastReset = now;
-          updates.message_count = 0;
-          updates.last_reset = now;
+        if (!isOneTime && (now - startDate >= cycleMs)) {
+          usedCount = 0;
+          startDate = now;
+          updates.cycle_used_messages = 0;
+          updates.cycle_start_date = now;
           needsUpdate = true;
         }
 
-        if (now - lastDailyReset >= ONE_DAY_MS) {
-          currentDailyCount = 0;
-          lastDailyReset = now;
-          updates.daily_message_count = 0;
-          updates.last_daily_reset = now;
+        if (isOneTime && usedCount >= limit) {
+          plan = 'Free';
+          limit = 3;
+          usedCount = 0;
+          startDate = now;
+          updates.current_plan = 'Free';
+          updates.is_pro = false;
+          updates.cycle_limit = 3;
+          updates.cycle_used_messages = 0;
+          updates.cycle_start_date = now;
           needsUpdate = true;
         }
 
@@ -96,27 +104,28 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
           await updateSubscriptionData(token, user.id, updates);
         }
 
-        setDailyCount(currentDailyCount);
-        setMessageCount(currentCount);
-        setMaxMessages(maxMsg);
-        setIsPro(data.is_pro || false);
+        setCycleUsedMessages(usedCount);
+        setLifetimeMessages(lifetime);
+        setCycleLimit(limit);
+        setCycleStartDate(startDate);
+        setIsPro(data.is_pro || plan !== 'Free');
         setCurrentPlan(plan);
         setHasUsedTrial(data.has_used_premium_trial || false);
 
       } else {
         await updateSubscriptionData(token, user.id, {
-          daily_message_count: 0,
-          last_daily_reset: now,
-          message_count: 0,
-          max_messages: 0,
+          cycle_used_messages: 0,
+          lifetime_messages: 0,
+          cycle_limit: 3,
+          cycle_start_date: now,
           current_plan: 'Free',
           is_pro: false,
-          last_reset: now,
           has_used_premium_trial: false 
         });
-        setDailyCount(0);
-        setMessageCount(0);
-        setMaxMessages(0);
+        setCycleUsedMessages(0);
+        setLifetimeMessages(0);
+        setCycleLimit(3);
+        setCycleStartDate(now);
         setIsPro(false);
         setCurrentPlan('Free');
         setHasUsedTrial(false);
@@ -124,6 +133,16 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     } catch (e) {
       console.error('Error loading user data from DB:', e);
     }
+  };
+
+  const refreshSubscription = async () => {
+    await loadUserData();
+  };
+
+  // 🌟 הפונקציה שמקפיצה את המספר באפליקציה באותה שניה 🌟
+  const incrementLocalCounter = () => {
+    setCycleUsedMessages(prev => prev + 1);
+    setLifetimeMessages(prev => prev + 1);
   };
 
   const startPremiumTrial = async (): Promise<boolean> => {
@@ -144,68 +163,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       console.error('Error starting trial:', error);
       return false;
     }
-  };
-
-  const incrementMessageCount = async () => {
-    if (!user?.id) return;
-
-    if (isTrialActive) {
-      setIsTrialActive(false);
-      return; 
-    }
-
-    try {
-      const token = await getToken({ template: 'supabase' });
-      if (!token) return;
-
-      const data = await getUserSubscriptionData(token, user.id);
-      const now = Date.now();
-      
-      let currentCount = data?.message_count || 0;
-      let lastReset = data?.last_reset || now;
-      let currentDailyCount = data?.daily_message_count || 0;
-      let lastDailyReset = data?.last_daily_reset || now;
-
-      let updates: any = {};
-      const isMonthlyPlan = currentPlan === 'PREMIUM' || currentPlan === 'PRO_monthly';
-
-      if (now - lastDailyReset >= ONE_DAY_MS) {
-        currentDailyCount = 0;
-        lastDailyReset = now;
-      }
-      if (now - lastReset >= THIRTY_DAYS_MS && isMonthlyPlan) {
-        currentCount = 0;
-        lastReset = now;
-      }
-
-      if (currentDailyCount < DAILY_FREE_LIMIT) {
-        currentDailyCount += 1;
-        updates.daily_message_count = currentDailyCount;
-        updates.last_daily_reset = lastDailyReset;
-      } else {
-        currentCount += 1;
-        updates.message_count = currentCount;
-        updates.last_reset = lastReset;
-
-        // 🌟 הנה התיקון שביקשת! החזרה אוטומטית ל-Free ברגע שנגמרות ההודעות בחד-פעמי 🌟
-        if (currentPlan === 'PRO_onetime' && currentCount >= (data?.max_messages || 50)) {
-          updates.current_plan = 'Free';
-          updates.is_pro = false;
-          updates.max_messages = 0;
-          updates.message_count = 0; // נאפס לו כדי שיראה "נקי" בתור חינמי
-
-          setCurrentPlan('Free');
-          setIsPro(false);
-          setMaxMessages(0);
-          currentCount = 0; 
-        }
-      }
-
-      setDailyCount(currentDailyCount);
-      setMessageCount(currentCount);
-
-      await updateSubscriptionData(token, user.id, updates);
-    } catch (e) { console.error('Error saving message count to DB:', e); }
   };
 
   const purchasePackage = async (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => {
@@ -231,20 +188,11 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
             let updates: any = {};
 
             if (plan === 'PREMIUM') {
-              setMaxMessages(1000);
-              setMessageCount(0);
-              setIsPro(true);
-              updates = { is_pro: true, current_plan: 'PREMIUM', max_messages: 1000, message_count: 0, last_reset: now };
+              updates = { is_pro: true, current_plan: 'PREMIUM', cycle_limit: 500, cycle_used_messages: 0, cycle_start_date: now };
             } else if (plan === 'PRO_monthly') {
-              setMaxMessages(50);
-              setMessageCount(0);
-              setIsPro(false);
-              updates = { max_messages: 50, message_count: 0, last_reset: now, current_plan: 'PRO_monthly', is_pro: false };
+              updates = { is_pro: true, current_plan: 'PRO_monthly', cycle_limit: 50, cycle_used_messages: 0, cycle_start_date: now };
             } else if (plan === 'PRO_onetime') {
-              setMaxMessages(50);
-              setMessageCount(0);
-              setIsPro(false);
-              updates = { max_messages: 50, message_count: 0, last_reset: now, current_plan: 'PRO_onetime', is_pro: false };
+              updates = { is_pro: true, current_plan: 'PRO_onetime', cycle_limit: 50, cycle_used_messages: 0, cycle_start_date: now };
             }
 
             await updateSubscriptionData(token, user.id, updates);
@@ -268,23 +216,19 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       
       if (user?.id) {
         const token = await getToken({ template: 'supabase' });
-        if (token) {
-          await updateUserLanguage(token, user.id, lang);
-        }
+        if (token) await updateUserLanguage(token, user.id, lang);
       }
-    } catch (e) { 
-      console.error('Error saving language:', e); 
-    }
+    } catch (e) { console.error('Error saving language:', e); }
   };
 
   const resetToFree = async () => {
-    alert('Dev Mode: Resetting to Free Account (and resetting Trial)...');
+    alert('Dev Mode: Resetting to Free Account...');
     const now = Date.now();
     setIsPro(false);
     setCurrentPlan('Free');
-    setMaxMessages(0);
-    setMessageCount(0);
-    setDailyCount(0);
+    setCycleLimit(3);
+    setCycleUsedMessages(0);
+    setCycleStartDate(now);
     setHasUsedTrial(false); 
     setIsTrialActive(false);
     
@@ -294,24 +238,24 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
           await updateSubscriptionData(token, user.id, {
               current_plan: 'Free',
               is_pro: false,
-              max_messages: 0,
-              message_count: 0,
-              daily_message_count: 0,
-              last_daily_reset: now,
+              cycle_limit: 3,
+              cycle_used_messages: 0,
+              cycle_start_date: now,
               has_used_premium_trial: false
           });
        }
     }
   };
 
-  const hasReachedLimit = (dailyCount >= DAILY_FREE_LIMIT) && (messageCount >= maxMessages) && !isTrialActive;
+  const hasReachedLimit = !isTrialActive && (cycleUsedMessages >= cycleLimit);
 
   return (
     <PaywallContext.Provider value={{ 
-      dailyCount, messageCount, maxMessages, incrementMessageCount, 
+      cycleUsedMessages, lifetimeMessages, cycleLimit, cycleStartDate,
       hasReachedLimit, isPro, currentPlan, purchasePackage,
       chatLanguage, changeLanguage, resetToFree,
-      hasUsedTrial, isTrialActive, startPremiumTrial
+      hasUsedTrial, isTrialActive, startPremiumTrial, refreshSubscription,
+      incrementLocalCounter // 🌟 הוספנו את הפונקציה כאן
     }}>
       {children}
     </PaywallContext.Provider>

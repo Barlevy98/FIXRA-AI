@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { MessageType, ChatSession } from '../src/types';
 import { fetchGameWalkthrough } from '../src/services/aiService';
 import { saveChatSession, getUserChatSessions, deleteChatSession } from '../src/utils/db';
+import { usePaywall } from '../src/context/PaywallContext'; // 🌟 משכנו את הקונטקסט כדי לעדכן UI!
 
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -40,6 +41,8 @@ export function useChatManager(
   t: any,
   greetingText: string
 ) {
+  const { incrementLocalCounter } = usePaywall(); // 🌟 הפונקציה שתקפיץ את ה-UI באותה שניה
+
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageType[]>([]);
@@ -129,7 +132,6 @@ export function useChatManager(
       }
       setSessions(loadedSessions);
       if (loadedSessions.length === 0) {
-        // Only clear ID and messages, don't auto-create
         setCurrentSessionId(null);
         setMessages([]);
       } else {
@@ -191,12 +193,10 @@ export function useChatManager(
           
           if (currentSessionId === sessionId) {
              if (updatedSessions.length > 0) {
-               // If there are other sessions, switch to the most recent one
                const mostRecent = updatedSessions[0];
                setCurrentSessionId(mostRecent.id);
                setMessages(mostRecent.messages);
              } else {
-               // If no sessions left, just clear the screen (don't auto-create)
                setCurrentSessionId(null);
                setMessages([]);
              }
@@ -273,7 +273,8 @@ export function useChatManager(
       for (let i = 0; i < 3; i++) {
         if (currentSignal.aborted) throw new Error("AbortError");
         
-        response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, updatedMsgs, currentPlan, categoryToPass, currentSignal);
+        // 🌟🌟🌟 התיקון הקריטי! הוספנו את ה-user?.id בסוף הפונקציה כדי שהשרת יוכל לחייב!! 🌟🌟🌟
+        response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, updatedMsgs, currentPlan, categoryToPass, currentSignal, user?.id);
         
         if (!response.isError) break; 
         
@@ -297,6 +298,10 @@ export function useChatManager(
       
       const finalMsgs = msgsWithLoading.map(msg => msg.id === loadingId ? { id: loadingId, text: response.message, walkthroughData: response.walkthroughData, sender: 'bot' as const } : msg);
       updateCurrentSession(finalMsgs, response.category);
+      
+      // 🌟 הפונקציה שמקפיצה את ה-UI באפליקציה באותו רגע 🌟
+      incrementLocalCounter();
+      
       return true;
       
     } catch (error: any) {
