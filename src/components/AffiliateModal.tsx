@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth, useUser } from '@clerk/clerk-expo';
-import { getUserAffiliateData, createReferralCode, submitCreatorApplication, claimInviteReward } from '../utils/db'; 
+import { getUserAffiliateData, createReferralCode, submitCreatorApplication, claimInviteReward , submitWithdrawalRequest} from '../utils/db'; 
 
 interface AffiliateModalProps {
   visible: boolean;
@@ -23,6 +23,7 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
   const [showLegal, setShowLegal] = useState(false); 
   
   const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [creatorCode, setCreatorCode] = useState<string | null>(null); 
   
   const [earnings, setEarnings] = useState<number>(0); 
   const [registeredInvites, setRegisteredInvites] = useState<number>(0);
@@ -30,16 +31,19 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
   const [bonusSolves, setBonusSolves] = useState<number>(0);
   
   const [customCodeInput, setCustomCodeInput] = useState('');
-  const [creatorStatus, setCreatorStatus] = useState<'none' | 'pending' | 'approved'>('none');
+  const [creatorStatus, setCreatorStatus] = useState<'none' | 'pending' | 'active' | 'blocked'>('none');
   const [creatorLinkInput, setCreatorLinkInput] = useState('');
   const [creatorFollowersInput, setCreatorFollowersInput] = useState('');
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
+
+  // סטייטים למשיכת כספים
+  const [showWithdrawForm, setShowWithdrawForm] = useState(false);
+  const [paypalEmail, setPaypalEmail] = useState('');
 
   const isCreator = mode === 'creator';
   const themeColor = isCreator ? '#ff00cc' : '#00e5ff';
   const themeGradient = isCreator ? ['#ff00cc', '#b300ff'] : ['#00e5ff', '#007acc'];
 
-  // 🌟 יעד של 5 חברים = פרס 🌟
   const unclaimedInvites = registeredInvites - (claimedMilestones * 5);
   const canClaimReward = unclaimedInvites >= 5 && !isCreator;
 
@@ -55,6 +59,7 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
         const data = await getUserAffiliateData(token, userId!);
         if (data) {
           setReferralCode(data.referral_code || null);
+          setCreatorCode(data.creator_code || null); 
           setEarnings(data.earnings_balance || 0); 
           setRegisteredInvites(data.registered_invites_count || 0);
           setClaimedMilestones(data.claimed_invites_milestones || 0);
@@ -99,19 +104,32 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
       const token = await getToken({ template: 'supabase' });
       if (token) {
         const res = await submitCreatorApplication(token, userId!, creatorLinkInput.trim(), creatorFollowersInput.trim());
-        
         if (res.success) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           setCreatorStatus('pending');
-
-          const adminEmail = 'fixra.partners@gmail.com';
-          const subject = `New Creator Application: ${user?.firstName || 'Gamer'}`;
-          const body = `Hello Fixra Team,\n\nA new creator has applied for the program:\n\nName: ${user?.fullName}\nEmail: ${user?.primaryEmailAddress?.emailAddress}\nChannel Link: ${creatorLinkInput}\nFollowers: ${creatorFollowersInput}\nUser ID: ${userId}\n\nPlease review in Supabase to approve.`;
-          
-          const mailtoUrl = `mailto:${adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-          Linking.openURL(mailtoUrl);
+          Alert.alert("Application Sent! 🚀", "Our team will review your channel and update your status soon.");
         } else {
           Alert.alert("Error", "Could not submit application.");
+        }
+      }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
+  };
+
+  const handleWithdrawRequest = async () => {
+    if (earnings < 10) return Alert.alert("Minimum Withdrawal", "You need at least $10 to withdraw.");
+    if (!paypalEmail.includes('@')) return Alert.alert("Invalid Email", "Please enter a valid PayPal email address.");
+    
+    setIsSaving(true);
+    try {
+      const token = await getToken({ template: 'supabase' });
+      if (token) {
+        const success = await submitWithdrawalRequest(token, userId!, earnings, paypalEmail.trim());
+        if (success) {
+          Alert.alert("Request Sent! 💸", "We have received your withdrawal request. It will be processed soon.");
+          setShowWithdrawForm(false);
+          setPaypalEmail('');
+        } else {
+          Alert.alert("Error", "Failed to submit request.");
         }
       }
     } catch (e) { console.error(e); } finally { setIsSaving(false); }
@@ -132,16 +150,18 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
   };
 
   const handleCopyLink = async () => {
-    await Clipboard.setStringAsync(`https://fixra.ai/ref/${referralCode}`);
+    const activeCode = (isCreator && creatorStatus === 'active' && creatorCode) ? creatorCode : referralCode;
+    await Clipboard.setStringAsync(`https://fixra.ai/ref/${activeCode}`);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert("Link Copied", "Ready to paste!");
   };
 
   const handleShare = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const link = `https://fixra.ai/ref/${referralCode}`;
+    const activeCode = (isCreator && creatorStatus === 'active' && creatorCode) ? creatorCode : referralCode;
+    const link = `https://fixra.ai/ref/${activeCode}`;
     const message = isCreator 
-      ? `Level up with FIXRA AI! Use my link: ${link}` 
+      ? `Level up with FIXRA AI! Use my official link: ${link}` 
       : `Join me on FIXRA AI and get smarter game guides! ${link}`;
     Share.share({ message: Platform.OS === 'android' ? link : message, url: Platform.OS === 'ios' ? link : undefined });
   };
@@ -163,7 +183,7 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
                     <Ionicons name="help" size={22} color={themeColor} />
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={() => { setCustomCodeInput(''); onClose(); }} style={styles.iconBtn}>
+                <TouchableOpacity onPress={() => { setCustomCodeInput(''); setShowWithdrawForm(false); onClose(); }} style={styles.iconBtn}>
                   <Ionicons name="close" size={24} color="#fff" />
                 </TouchableOpacity>
               </View>
@@ -173,7 +193,6 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
               {isLoading ? ( <View style={styles.centerContent}><ActivityIndicator color={themeColor} /></View> ) : 
               
               showGuide ? (
-                // 🌟 מדריך מורחב שמסביר על הכסף והפתרונות גם יחד! 🌟
                 <View style={styles.guideContainer}>
                   <Text style={styles.guideTitle}>How It Works</Text>
                   <Text style={styles.guideSubtitle}>Follow these steps to earn dual rewards</Text>
@@ -258,6 +277,97 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
                   <Text style={styles.setupDesc}>We received your application! Our partners are reviewing your channel. You'll be notified soon.</Text>
                 </View>
 
+              ) : isCreator && creatorStatus === 'blocked' ? (
+                <View style={styles.centerContent}>
+                  <View style={[styles.iconCircle, { borderColor: '#ff3333' }]}>
+                    <Ionicons name="ban" size={45} color="#ff3333" />
+                  </View>
+                  <Text style={[styles.setupTitle, {color: '#ff3333'}]}>Partnership Revoked</Text>
+                  <Text style={styles.setupDesc}>Your creator privileges and official code have been suspended due to a violation of our terms.</Text>
+                </View>
+
+              ) : isCreator && creatorStatus === 'active' ? (
+                /* 🚀 המסך החגיגי ליוצרים שאושרו - מציג את ה-creatorCode! 🚀 */
+                <View style={styles.dashboardContainer}>
+                  <View style={[styles.vipCard, { shadowColor: themeColor, borderColor: themeColor, borderWidth: 1 }]}>
+                    <LinearGradient colors={['rgba(255,0,204,0.15)', 'rgba(0,0,0,0.8)']} style={styles.vipCardGradient}>
+                      
+                      <View style={{alignItems: 'center', marginBottom: 25}}>
+                        <Ionicons name="rocket" size={45} color={themeColor} style={{marginBottom: 10}} />
+                        <Text style={{fontSize: 24, fontWeight: '900', color: '#fff', textAlign: 'center', marginBottom: 8}}>
+                          השותפות שלך אושרה! 🚀
+                        </Text>
+                        <Text style={{fontSize: 16, color: '#ccc', textAlign: 'center', marginBottom: 15}}>
+                          זה הקוד הרשמי שלך לשיווק:
+                        </Text>
+                        
+                        <View style={{backgroundColor: themeColor, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, marginBottom: 15}}>
+                          <Text style={{fontSize: 24, fontWeight: '900', color: '#fff', letterSpacing: 2}}>
+                            {creatorCode || "PENDING"}
+                          </Text>
+                        </View>
+                        
+                        <Text style={{fontSize: 15, color: '#aaa', textAlign: 'center'}}>
+                          שתף אותו עם הקהילה שלך כדי להתחיל להרוויח!
+                        </Text>
+                      </View>
+
+                      <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 15 }} />
+                      
+                      {/* === שורת היתרה של היוצר עם כפתור המשיכה החדש === */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View>
+                          <Text style={styles.balanceLabel}>CASH EARNINGS</Text>
+                          <Text style={[styles.balanceAmount, { textShadowColor: themeColor, textShadowRadius: 10, fontSize: 32 }]}>
+                            ${earnings.toFixed(2)}
+                          </Text>
+                        </View>
+                        <TouchableOpacity style={styles.withdrawBtn} onPress={() => setShowWithdrawForm(!showWithdrawForm)}>
+                          <Text style={styles.withdrawText}>{showWithdrawForm ? "Cancel" : "Withdraw"}</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* טופס המשיכה שקופץ */}
+                      {showWithdrawForm && (
+                        <View style={{ marginTop: 15, backgroundColor: 'rgba(0,0,0,0.4)', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: themeColor }}>
+                          <Text style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>Enter your PayPal Email:</Text>
+                          <TextInput 
+                            style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 10 }}
+                            placeholder="creator@paypal.com"
+                            placeholderTextColor="#666"
+                            value={paypalEmail}
+                            onChangeText={setPaypalEmail}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                          />
+                          <TouchableOpacity 
+                            onPress={handleWithdrawRequest} 
+                            disabled={isSaving}
+                            style={{ backgroundColor: themeColor, padding: 12, borderRadius: 8, alignItems: 'center' }}
+                          >
+                            {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold' }}>Request ${earnings.toFixed(2)}</Text>}
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
+                    </LinearGradient>
+                  </View>
+                  
+                  <Text style={styles.sectionLabel}>YOUR OFFICIAL CREATOR LINK</Text>
+                  <TouchableOpacity style={[styles.linkCard, { borderColor: themeColor + '40' }]} onPress={handleCopyLink}>
+                    <Ionicons name="link" size={20} color={themeColor} style={{marginRight: 10}} />
+                    <Text style={styles.linkText} numberOfLines={1}>fixra.ai/ref/{creatorCode}</Text>
+                    <Ionicons name="copy-outline" size={20} color="#888" />
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={[styles.actionBtn, { marginTop: 20 }]} onPress={handleShare}>
+                    <LinearGradient colors={themeGradient as [string, string]} style={styles.actionBtnGradient}>
+                      <Ionicons name="logo-whatsapp" size={22} color="#fff" style={{ marginRight: 10 }} />
+                      <Text style={styles.actionBtnText}>Share Official Link</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+
               ) : !referralCode ? (
                 <View style={styles.setupContainer}>
                    <View style={[styles.iconCircle, { borderColor: themeColor }]}><Ionicons name="id-card" size={40} color={themeColor} /></View>
@@ -274,27 +384,47 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
 
               ) : (
                 <View style={styles.dashboardContainer}>
-                  {/* 🌟 הארנק המפוצל החדש: כסף וגם פתרונות למשתמשים רגילים 🌟 */}
                   <View style={[styles.vipCard, { shadowColor: themeColor }]}>
                     <LinearGradient colors={['rgba(255,255,255,0.05)', 'rgba(0,0,0,0.6)']} style={styles.vipCardGradient}>
                       
-                      {/* SECTION 1: CASH EARNINGS (Visible to EVERYONE) */}
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                      {/* === שורת היתרה של משתמש רגיל עם כפתור המשיכה החדש === */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: showWithdrawForm ? 0 : 15 }}>
                         <View>
                           <Text style={styles.balanceLabel}>CASH EARNINGS</Text>
                           <Text style={[styles.balanceAmount, { textShadowColor: themeColor, textShadowRadius: 10, fontSize: 38 }]}>
                             ${earnings.toFixed(2)}
                           </Text>
                         </View>
-                        <TouchableOpacity style={styles.withdrawBtn} onPress={() => Linking.openURL('mailto:fixra.partners@gmail.com')}>
-                          <Text style={styles.withdrawText}>Withdraw</Text>
+                        <TouchableOpacity style={styles.withdrawBtn} onPress={() => setShowWithdrawForm(!showWithdrawForm)}>
+                          <Text style={styles.withdrawText}>{showWithdrawForm ? "Cancel" : "Withdraw"}</Text>
                         </TouchableOpacity>
                       </View>
 
-                      {/* DIVIDER (If not creator) */}
+                      {/* טופס המשיכה שקופץ */}
+                      {showWithdrawForm && (
+                        <View style={{ marginTop: 15, marginBottom: 15, backgroundColor: 'rgba(0,0,0,0.4)', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: themeColor }}>
+                          <Text style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>Enter your PayPal Email:</Text>
+                          <TextInput 
+                            style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff', padding: 10, borderRadius: 8, marginBottom: 10 }}
+                            placeholder="user@paypal.com"
+                            placeholderTextColor="#666"
+                            value={paypalEmail}
+                            onChangeText={setPaypalEmail}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                          />
+                          <TouchableOpacity 
+                            onPress={handleWithdrawRequest} 
+                            disabled={isSaving}
+                            style={{ backgroundColor: themeColor, padding: 12, borderRadius: 8, alignItems: 'center' }}
+                          >
+                            {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold' }}>Request ${earnings.toFixed(2)}</Text>}
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
                       {!isCreator && <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 15 }} />}
 
-                      {/* SECTION 2: AI SOLVES VAULT (Visible only to normal users) */}
                       {!isCreator && (
                         <View>
                           <Text style={styles.balanceLabel}>VAULT: BONUS SOLVES</Text>

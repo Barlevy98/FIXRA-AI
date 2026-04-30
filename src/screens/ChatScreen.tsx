@@ -19,11 +19,12 @@ import SettingsScreen from './SettingsScreen';
 import CommunityModal from '../components/CommunityModal'; 
 import GameLibraryModal from '../components/GameLibraryModal'; 
 import { getTranslation } from '../utils/translations';
-import { getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus, saveBookmark, getUserBookmarks } from '../utils/db';
+import { getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus, saveBookmark, getUserBookmarks } from '../utils/db'; // הוסר checkIfUserIsAdmin
 import MessageBubble from '../components/MessageBubble';
 import ChatInputArea from '../components/ChatInputArea';
 import ChatSideMenu from '../components/ChatSideMenu';
 import { useChatManager } from '../../hooks/useChatManager';
+// הוסר הייבוא של AdminDashboardModal
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -54,7 +55,6 @@ export default function ChatScreen() {
   const { getToken } = useAuth();
   
   const { 
-    incrementMessageCount, 
     hasReachedLimit, 
     chatLanguage, 
     currentPlan,
@@ -93,8 +93,12 @@ export default function ChatScreen() {
   const [dismissedTrialPopup, setDismissedTrialPopup] = useState(false);
   const [isLimitModalVisible, setIsLimitModalVisible] = useState(false);
 
+  // הוסרו הסטייטים של isAdminUser ו-isAdminVisible
+
   const slideAnim = useRef(new Animated.Value(screenWidth)).current;
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // הוסר ה-useEffect שבדק סטטוס אדמין
 
   useEffect(() => {
     const syncBookmarks = async () => {
@@ -231,7 +235,6 @@ export default function ChatScreen() {
     }
   };
 
-  // 🌟 הגבלת הגישה למדיה לפי דרגות!
   const enforceMediaTierLimit = () => {
     const isPro = effectivePlan?.startsWith('PRO') || effectivePlan === 'PREMIUM';
     if (!isPro && effectivePlan !== 'PREMIUM') {
@@ -267,20 +270,18 @@ export default function ChatScreen() {
 
   const openCamera = async () => {
     setIsAttachMenuVisible(false);
-    if (!enforceMediaTierLimit()) return; // בדיקת תמונות (Pro/Premium)
+    if (!enforceMediaTierLimit()) return; 
 
     const p = await ImagePicker.requestCameraPermissionsAsync();
     if(!p.granted) { Alert.alert("Permission needed", "Please allow camera access."); return; }
     
-    // מאפשרים צילום וידאו רק לפרימיום
     const mediaTypes = effectivePlan === 'PREMIUM' ? ['images', 'videos'] : ['images'];
     
-    // Note: TypeScript issue with ImagePickerMediaType type mapping, bypassing explicitly for this implementation
     let r = await ImagePicker.launchCameraAsync({ mediaTypes: mediaTypes as any, allowsEditing: true, quality: 0.5, base64: true });
     
     if(!r.canceled) {
       const asset = r.assets[0];
-      if (!enforceVideoTierLimit(asset.type || 'image')) return; // חסימה נוספת למקרה שהמשתמש עקף
+      if (!enforceVideoTierLimit(asset.type || 'image')) return; 
 
       if (asset.type === 'video') {
         const videoData = await processVideoFrames(asset.uri, asset.duration);
@@ -293,17 +294,15 @@ export default function ChatScreen() {
 
   const openGallery = async () => {
     setIsAttachMenuVisible(false);
-    if (!enforceMediaTierLimit()) return; // בדיקת תמונות (Pro/Premium)
+    if (!enforceMediaTierLimit()) return; 
 
-    // מאפשרים בחירת וידאו מהגלריה רק לפרימיום
     const mediaTypes = effectivePlan === 'PREMIUM' ? ['images', 'videos'] : ['images'];
 
-    // Note: TypeScript issue with ImagePickerMediaType type mapping, bypassing explicitly for this implementation
     let r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: mediaTypes as any, allowsEditing: true, quality: 0.5, base64: true });
     
     if(!r.canceled) {
       const asset = r.assets[0];
-      if (!enforceVideoTierLimit(asset.type || 'image')) return; // חסימה כפולה
+      if (!enforceVideoTierLimit(asset.type || 'image')) return; 
       
       if (asset.type === 'video') {
         const videoData = await processVideoFrames(asset.uri, asset.duration);
@@ -341,7 +340,6 @@ export default function ChatScreen() {
 
     if (success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); 
-      await incrementMessageCount();
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); 
     }
@@ -389,6 +387,7 @@ export default function ChatScreen() {
           onDeleteSession={chatManager.deleteSession}
           newChatText={t.newChat}
           historyTitleText={t.historyTitle}
+          // הוסרו הפרופס של האדמין 
         />
 
         <View style={styles.header}>
@@ -525,6 +524,8 @@ export default function ChatScreen() {
         <TutorialModal visible={isTutorialVisible} onClose={() => { handleCloseTutorial(); }} />
         <TermsModal />
         
+        {/* הוסר רינדור של AdminDashboardModal */}
+
       </SafeAreaView>
     </LinearGradient>
   );
