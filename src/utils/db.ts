@@ -64,11 +64,33 @@ export const updateSubscriptionData = async (clerkToken: string, userId: string,
   return !error;
 };
 
-// 🌟 הנה השינוי הקריטי: הוספנו פה את 'creator_code' 🌟
+// 🌟 פונקציית שליפת נתוני השותף - מעודכנת 🌟
 export const getUserAffiliateData = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
-  const { data, error } = await supabase.from('user_profiles').select('referral_code, creator_code, referred_by, earnings_balance, creator_status, registered_invites_count, claimed_invites_milestones, bonus_solves_balance').eq('user_id', userId).single();
-  return error && error.code !== 'PGRST116' ? null : data;
+  
+  // 1. קודם שולפים את נתוני הפרופיל, כולל העמודה החדשה pending_balance
+  const { data: profileData, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('referral_code, creator_code, referred_by, earnings_balance, pending_balance, creator_status, registered_invites_count, claimed_invites_milestones, bonus_solves_balance')
+    .eq('user_id', userId)
+    .single();
+
+  if (profileError && profileError.code !== 'PGRST116') {
+    return null;
+  }
+
+  // 2. עכשיו שולפים גם את היסטוריית המשיכות מהטבלה החדשה, אם יש
+  const { data: withdrawalHistory, error: historyError } = await supabase
+    .from('withdrawal_requests')
+    .select('amount, status, paypal_email, rejection_reason, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  // מאחדים את שני הנתונים לאובייקט אחד כדי שהאפליקציה תוכל להשתמש בזה בקלות
+  return {
+    ...profileData,
+    withdrawal_history: historyError ? [] : withdrawalHistory
+  };
 };
 
 export const createReferralCode = async (clerkToken: string, userId: string, customCode: string) => {
@@ -162,19 +184,44 @@ export async function reportMessageToCloud(token: string, userId: string, messag
     return false;
   }
 }
+
+// 🌟 פונקציית יצירת בקשת משיכה - מעודכנת 🌟
 export const submitWithdrawalRequest = async (clerkToken: string, userId: string, amount: number, paypalEmail: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
-  const { data, error } = await supabase.from('withdrawal_requests').insert([{
+  
+  // 1. קודם כל, רושמים את הבקשה בטבלת withdrawal_requests
+  const { error: requestError } = await supabase.from('withdrawal_requests').insert([{
     user_id: userId,
     amount: amount,
     paypal_email: paypalEmail,
-    status: 'pending'
+    status: 'pending' // סטטוס התחלתי הוא תמיד בהמתנה
   }]);
   
-  // הוספנו את ההדפסה הזו כדי לראות בדיוק על מה Supabase מתלונן!
-  if (error) {
-    console.error("Supabase Withdrawal Error:", error);
+  if (requestError) {
+    console.error("Supabase Withdrawal Error:", requestError);
+    return false;
+  }
+
+  // 2. אם הבקשה נרשמה בהצלחה, אנחנו חייבים "להקפיא" את הכסף:
+  // נמשוך את היתרות הנוכחיות
+  const { data: currentProfile } = await supabase
+    .from('user_profiles')
+    .select('earnings_balance, pending_balance')
+    .eq('user_id', userId)
+    .single();
+
+  if (currentProfile) {
+    const newEarnings = Math.max(0, (currentProfile.earnings_balance || 0) - amount); // מורידים מהזמין
+    const newPending = (currentProfile.pending_balance || 0) + amount; // מוסיפים לבהמתנה
+
+    // נעדכן את היתרות במסד הנתונים
+    await supabase.from('user_profiles').upsert({ 
+      user_id: userId, 
+      earnings_balance: newEarnings,
+      pending_balance: newPending,
+      updated_at: Date.now() 
+    });
   }
   
-  return !error;
+  return true;
 };

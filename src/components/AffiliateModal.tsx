@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Share, Platform, KeyboardAvoidingView, Linking, ScrollView, Alert } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Share, Platform, KeyboardAvoidingView, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -26,6 +26,9 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
   const [creatorCode, setCreatorCode] = useState<string | null>(null); 
   
   const [earnings, setEarnings] = useState<number>(0); 
+  const [pendingBalance, setPendingBalance] = useState<number>(0); // נוסף: יתרה בהמתנה
+  const [withdrawalHistory, setWithdrawalHistory] = useState<any[]>([]); // נוסף: היסטוריית משיכות
+
   const [registeredInvites, setRegisteredInvites] = useState<number>(0);
   const [claimedMilestones, setClaimedMilestones] = useState<number>(0);
   const [bonusSolves, setBonusSolves] = useState<number>(0);
@@ -61,6 +64,8 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
           setReferralCode(data.referral_code || null);
           setCreatorCode(data.creator_code || null); 
           setEarnings(data.earnings_balance || 0); 
+          setPendingBalance(data.pending_balance || 0); // משיכת יתרה בהמתנה
+          setWithdrawalHistory(data.withdrawal_history || []); // משיכת היסטוריה
           setRegisteredInvites(data.registered_invites_count || 0);
           setClaimedMilestones(data.claimed_invites_milestones || 0);
           setBonusSolves(data.bonus_solves_balance || 0);
@@ -116,7 +121,7 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
   };
 
   const handleWithdrawRequest = async () => {
-    if (earnings < 10) return Alert.alert("Minimum Withdrawal", "You need at least $10 to withdraw.");
+    if (earnings < 10) return Alert.alert("Minimum Withdrawal", "You need at least $10 available to withdraw.");
     if (!paypalEmail.includes('@')) return Alert.alert("Invalid Email", "Please enter a valid PayPal email address.");
     
     setIsSaving(true);
@@ -125,9 +130,10 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
       if (token) {
         const success = await submitWithdrawalRequest(token, userId!, earnings, paypalEmail.trim());
         if (success) {
-          Alert.alert("Request Sent! 💸", "We have received your withdrawal request. It will be processed soon.");
+          Alert.alert("Request Sent! 💸", "Your withdrawal is being processed.");
           setShowWithdrawForm(false);
           setPaypalEmail('');
+          loadData(); // רענון נתונים כדי להראות את הסטטוס החדש והיתרות המעודכנות
         } else {
           Alert.alert("Error", "Failed to submit request.");
         }
@@ -164,6 +170,36 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
       ? `Level up with FIXRA AI! Use my official link: ${link}` 
       : `Join me on FIXRA AI and get smarter game guides! ${link}`;
     Share.share({ message: Platform.OS === 'android' ? link : message, url: Platform.OS === 'ios' ? link : undefined });
+  };
+
+  // פונקציית עזר לרינדור היסטוריית המשיכות
+  const renderWithdrawalHistory = () => {
+    if (!withdrawalHistory || withdrawalHistory.length === 0) return null;
+    
+    return (
+      <View style={{marginTop: 20}}>
+        <Text style={styles.sectionLabel}>WITHDRAWAL HISTORY</Text>
+        {withdrawalHistory.map((req, idx) => (
+          <View key={idx} style={styles.historyCard}>
+            <View>
+              <Text style={{color: '#fff', fontWeight: 'bold'}}>${req.amount?.toFixed(2)}</Text>
+              <Text style={{color: '#666', fontSize: 12}}>
+                {new Date(req.created_at).toLocaleDateString()}
+              </Text>
+            </View>
+            <View style={{alignItems: 'flex-end'}}>
+               {req.status === 'pending' && <Text style={{color: '#ffaa00', fontWeight: 'bold'}}>In Review</Text>}
+               {req.status === 'approved' && <Text style={{color: '#00ff88', fontWeight: 'bold'}}>Paid</Text>}
+               {req.status === 'rejected' && (
+                 <TouchableOpacity onPress={() => Alert.alert("Declined", req.rejection_reason || "Your request was declined. Please contact support.")}>
+                   <Text style={{color: '#ff3333', fontWeight: 'bold', textDecorationLine: 'underline'}}>Declined ℹ️</Text>
+                 </TouchableOpacity>
+               )}
+            </View>
+          </View>
+        ))}
+      </View>
+    );
   };
 
   return (
@@ -287,7 +323,6 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
                 </View>
 
               ) : isCreator && creatorStatus === 'active' ? (
-                /* 🚀 המסך החגיגי ליוצרים שאושרו - מציג את ה-creatorCode! 🚀 */
                 <View style={styles.dashboardContainer}>
                   <View style={[styles.vipCard, { shadowColor: themeColor, borderColor: themeColor, borderWidth: 1 }]}>
                     <LinearGradient colors={['rgba(255,0,204,0.15)', 'rgba(0,0,0,0.8)']} style={styles.vipCardGradient}>
@@ -314,20 +349,28 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
 
                       <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 15 }} />
                       
-                      {/* === שורת היתרה של היוצר עם כפתור המשיכה החדש === */}
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <View>
-                          <Text style={styles.balanceLabel}>CASH EARNINGS</Text>
-                          <Text style={[styles.balanceAmount, { textShadowColor: themeColor, textShadowRadius: 10, fontSize: 32 }]}>
-                            ${earnings.toFixed(2)}
-                          </Text>
+                        <View style={{flexDirection: 'row', gap: 20}}>
+                          <View>
+                            <Text style={styles.balanceLabel}>AVAILABLE</Text>
+                            <Text style={[styles.balanceAmount, { textShadowColor: themeColor, textShadowRadius: 10, fontSize: 32 }]}>
+                              ${earnings.toFixed(2)}
+                            </Text>
+                          </View>
+                          {pendingBalance > 0 && (
+                            <View>
+                              <Text style={styles.balanceLabel}>PENDING 🕒</Text>
+                              <Text style={[styles.balanceAmount, { color: '#ffaa00', fontSize: 22, marginTop: 5 }]}>
+                                ${pendingBalance.toFixed(2)}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                         <TouchableOpacity style={styles.withdrawBtn} onPress={() => setShowWithdrawForm(!showWithdrawForm)}>
                           <Text style={styles.withdrawText}>{showWithdrawForm ? "Cancel" : "Withdraw"}</Text>
                         </TouchableOpacity>
                       </View>
 
-                      {/* טופס המשיכה שקופץ */}
                       {showWithdrawForm && (
                         <View style={{ marginTop: 15, backgroundColor: 'rgba(0,0,0,0.4)', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: themeColor }}>
                           <Text style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>Enter your PayPal Email:</Text>
@@ -366,6 +409,9 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
                       <Text style={styles.actionBtnText}>Share Official Link</Text>
                     </LinearGradient>
                   </TouchableOpacity>
+
+                  {/* היסטוריית משיכות מוצגת כאן */}
+                  {renderWithdrawalHistory()}
                 </View>
 
               ) : !referralCode ? (
@@ -387,20 +433,28 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
                   <View style={[styles.vipCard, { shadowColor: themeColor }]}>
                     <LinearGradient colors={['rgba(255,255,255,0.05)', 'rgba(0,0,0,0.6)']} style={styles.vipCardGradient}>
                       
-                      {/* === שורת היתרה של משתמש רגיל עם כפתור המשיכה החדש === */}
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: showWithdrawForm ? 0 : 15 }}>
-                        <View>
-                          <Text style={styles.balanceLabel}>CASH EARNINGS</Text>
-                          <Text style={[styles.balanceAmount, { textShadowColor: themeColor, textShadowRadius: 10, fontSize: 38 }]}>
-                            ${earnings.toFixed(2)}
-                          </Text>
+                        <View style={{flexDirection: 'row', gap: 20}}>
+                          <View>
+                            <Text style={styles.balanceLabel}>AVAILABLE</Text>
+                            <Text style={[styles.balanceAmount, { textShadowColor: themeColor, textShadowRadius: 10, fontSize: 38 }]}>
+                              ${earnings.toFixed(2)}
+                            </Text>
+                          </View>
+                          {pendingBalance > 0 && (
+                            <View>
+                              <Text style={styles.balanceLabel}>PENDING 🕒</Text>
+                              <Text style={[styles.balanceAmount, { color: '#ffaa00', fontSize: 24, marginTop: 10 }]}>
+                                ${pendingBalance.toFixed(2)}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                         <TouchableOpacity style={styles.withdrawBtn} onPress={() => setShowWithdrawForm(!showWithdrawForm)}>
                           <Text style={styles.withdrawText}>{showWithdrawForm ? "Cancel" : "Withdraw"}</Text>
                         </TouchableOpacity>
                       </View>
 
-                      {/* טופס המשיכה שקופץ */}
                       {showWithdrawForm && (
                         <View style={{ marginTop: 15, marginBottom: 15, backgroundColor: 'rgba(0,0,0,0.4)', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: themeColor }}>
                           <Text style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>Enter your PayPal Email:</Text>
@@ -465,6 +519,9 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
                       <Text style={styles.actionBtnText}>{isCreator ? 'Share Creator Link' : 'Share with Friends'}</Text>
                     </LinearGradient>
                   </TouchableOpacity>
+
+                  {/* היסטוריית משיכות מוצגת גם למשתמשים רגילים */}
+                  {renderWithdrawalHistory()}
                 </View>
               )}
             </ScrollView>
@@ -548,5 +605,7 @@ const styles = StyleSheet.create({
   legalTitle: { color: '#fff', fontSize: 24, fontWeight: '900', marginBottom: 20, textAlign: 'center' },
   legalScroll: { maxHeight: 300 },
   legalText: { color: '#ccc', fontSize: 15, lineHeight: 24 },
-  bold: { fontWeight: 'bold', color: '#fff' }
+  bold: { fontWeight: 'bold', color: '#fff' },
+  // סגנונות חדשים להיסטוריית משיכות
+  historyCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', padding: 15, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' }
 });

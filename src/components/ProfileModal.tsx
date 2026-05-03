@@ -22,7 +22,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   const { getToken } = useAuth();
   const insets = useSafeAreaInsets(); 
   
-  // 🌟 משיכת הנתונים והמרה לשמות החדשים וההגיוניים שלנו 🌟
   const { 
     isPro, 
     currentPlan, 
@@ -48,11 +47,11 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   const safeLimit = cycleLimit || (isPro ? 50 : 3);
   const safeStartDate = cycleStartDate || Date.now();
 
-  const isPremium = currentPlan === 'PREMIUM';
-  const planLower = currentPlan.toLowerCase();
+  const planLower = (currentPlan || '').toLowerCase(); // מוודאים שאין קריסה אם currentPlan ריק
+  const isPremium = planLower === 'premium';
   const isProPlan = planLower.startsWith('pro');
   const isOneTime = planLower.includes('one') || planLower.includes('time') || planLower.includes('חד');
-  const isFree = currentPlan === 'Free';
+  const isFree = planLower === 'free' || !isProPlan;
 
   const themeColor = isPremium ? '#00e5ff' : isProPlan ? '#ff00cc' : '#aaaaaa';
 
@@ -68,16 +67,19 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
     renewalText = `Resets on ${nextDate.toLocaleDateString('he-IL')}`;
   }
 
+  // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
   const getActivePlanFeatures = () => {
-    switch(currentPlan) {
-      case 'PREMIUM': 
-        return ['Unlimited mission solves', 'AI video & image analysis', 'Unlimited guide links', 'No ads', 'Fastest results ⚡', 'Priority processing'];
-      case 'PRO_monthly':
-      case 'PRO_onetime': 
-        return ['50 mission solves', 'AI image analysis', '3 guide links per solution', 'Priority support'];
-      default: 
-        return ['3 free messages per day', 'Basic AI text help', 'Ads included'];
+    if (isPremium) {
+      return ['Unlimited mission solves', 'AI video & image analysis', 'Unlimited guide links', 'No ads', 'Fastest results ⚡', 'Priority processing'];
     }
+    
+    // אם המילה 'pro' קיימת בתוך השם של החבילה, הוא פרו
+    if (planLower.includes('pro')) {
+      return ['50 mission solves', 'AI image analysis', '3 guide links per solution', 'Priority support'];
+    }
+    
+    // ברירת מחדל: חינם
+    return ['3 free messages per day', 'Basic AI text help', 'Ads included'];
   };
 
   const getDisplayPlanName = () => {
@@ -160,7 +162,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                   </View>
                 </View>
                 
-                {/* 🌟 שורת הסטטיסטיקות המעודכנת 🌟 */}
                 <View style={styles.statsRow}>
                   <View style={styles.statBox}>
                     <Text style={styles.statNumber}>{safeLifetime}</Text>
@@ -183,7 +184,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                 </View>
               </LinearGradient>
 
-              {/* 🌟 כרטיסיית המנוי עם התאריך ופס ההתקדמות 🌟 */}
               <View style={styles.cardWrapper}>
                 <Text style={styles.sectionTitle}>Subscription</Text>
                 <TouchableOpacity activeOpacity={0.8} onPress={() => setShowPlanDetails(true)}>
@@ -259,7 +259,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                   </View>
                 </LinearGradient>
 
-                {currentPlan !== 'Free' ? (
+                {!isFree ? (
                   <TouchableOpacity style={styles.cancelPlanBtn} onPress={handleCancelSubscription}>
                     <Text style={styles.cancelPlanBtnText}>Cancel Subscription</Text>
                   </TouchableOpacity>

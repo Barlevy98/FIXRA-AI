@@ -445,7 +445,8 @@ export default function ChatScreen() {
                 onSendMessage={handleSendMessage}
                 onOpenCamera={openCamera}
                 onOpenGallery={openGallery}
-                placeholder={hasReachedLimit && !isTrialActive ? t.lockedPlaceholder : t.placeholder}
+                // 🌟 התיקון בשורת ההקלדה 🌟
+                placeholder={hasReachedLimit && !isTrialActive ? t.lockedPlaceholder(currentPlan) : t.placeholder}
                 cameraText={t.camera}
                 galleryText={t.gallery}
                 disclaimerText={t.disclaimer}
@@ -493,7 +494,8 @@ export default function ChatScreen() {
               </View>
               
               <Text style={styles.limitModalTitle}>{t.limitAlertTitle}</Text>
-              <Text style={styles.limitModalSubtitle}>{t.limitReached}</Text>
+              {/* 🌟 התיקון בטקסט של הפופ-אפ 🌟 */}
+              <Text style={styles.limitModalSubtitle}>{t.limitReached(currentPlan)}</Text>
               
               <TouchableOpacity 
                 activeOpacity={0.8} 
@@ -524,13 +526,12 @@ export default function ChatScreen() {
         <TutorialModal visible={isTutorialVisible} onClose={() => { handleCloseTutorial(); }} />
         <TermsModal />
         
-        {/* הוסר רינדור של AdminDashboardModal */}
-
       </SafeAreaView>
     </LinearGradient>
   );
 }
 
+// ... styles נשארים אותו דבר
 const styles = StyleSheet.create({
   background: { flex: 1 },
   container: { flex: 1 },

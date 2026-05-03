@@ -1,6 +1,7 @@
 export const TRANSLATIONS = {
   English: {
-    placeholder: "Have a question?...", send: "Send", limitReached: "You've reached your free limit for the next 24 hours 😕", upgradeNow: "Upgrade to continue", loading: "Searching...", newChat: "➕ New Chat", historyTitle: "Chat History", langTitle: "Change Language", newChatName: "New Chat",
+    placeholder: "Have a question?...", send: "Send", 
+    upgradeNow: "Upgrade to continue", loading: "Searching...", newChat: "➕ New Chat", historyTitle: "Chat History", langTitle: "Change Language", newChatName: "New Chat",
     greeting: (name: string) => `Hi${name ? ' ' + name : ''}, how can I help?`,
     deleteAlert: "Delete Chat", deleteConfirm: "Are you sure you want to delete this chat?", cancel: "Cancel", delete: "Delete",
     attachTitle: "Attach File", attachSubtitle: "Where would you like to upload from?", camera: "Camera ", gallery: "Gallery ",
@@ -14,17 +15,31 @@ export const TRANSLATIONS = {
     imageSearch: "📷 Image Search",
     videoSearch: "🎥 Video Search",
 
-    // 🌟 הוספות לפופ-אפ ולחסימה 🌟
-    limitBannerText: "Daily limit reached ⏳",
-    lockedPlaceholder: "Daily limit reached ⏳ (Tap to unlock)",
-    limitAlertTitle: "Quick Break ⏳",
+    limitBannerText: "Limit reached ⏳",
+    limitAlertTitle: "Out of Solves ⏳",
+    
+    // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
+    lockedPlaceholder: (plan: string) => {
+      const p = String(plan || '').toLowerCase();
+      if (p.includes('monthly') || p.includes('onetime')) return "Message limit reached ⏳ (Tap to unlock)";
+      return "Daily limit reached ⏳ (Tap to unlock)";
+    },
+
+    limitReached: (plan: string) => {
+      const p = String(plan || '').toLowerCase();
+      if (p.includes('monthly')) return "You've reached your 50 messages limit for this month 😕";
+      if (p.includes('onetime')) return "You've used all 50 messages from your pack 😕";
+      return "You've reached your free limit for the next 24 hours 😕";
+    },
+
     trialPopupTitle: "Out of Free Solves! 🛑",
     trialPopupSubtitle: "But wait... take 1 FREE Premium Message on us to experience the real power of FIXRA.",
     trialPopupBtn: "🎁 Claim Free Premium Message",
     trialPopupClose: "No thanks, I'll wait 24 hours"
   },
   Hebrew: {
-    placeholder: "יש לך שאלה?...", send: "שלח", limitReached: "הגעת למכסת ה-3 הודעות שלך ל-24 שעות הקרובות 😕", upgradeNow: "שדרג להמשך שיחה", loading: "מחפש פתרונות...", newChat: "➕ שיחה חדשה", historyTitle: "היסטוריית שיחות", langTitle: "שנה שפה", newChatName: "שיחה חדשה",
+    placeholder: "יש לך שאלה?...", send: "שלח", 
+    upgradeNow: "שדרג להמשך שיחה", loading: "מחפש פתרונות...", newChat: "➕ שיחה חדשה", historyTitle: "היסטוריית שיחות", langTitle: "שנה שפה", newChatName: "שיחה חדשה",
     greeting: (name: string) => `היי${name ? ' ' + name : ''}, איך אוכל לעזור?`,
     deleteAlert: "מחיקת שיחה", deleteConfirm: "האם אתה בטוח שברצונך למחוק שיחה זו?", cancel: "ביטול", delete: "מחק",
     attachTitle: "הוספת קובץ", attachSubtitle: "מאיפה תרצה להעלות?", camera: "מצלמה ", gallery: "גלריה ",
@@ -38,17 +53,31 @@ export const TRANSLATIONS = {
     imageSearch: "📷 חיפוש תמונה",
     videoSearch: "🎥 חיפוש וידאו",
 
-    // 🌟 הוספות לפופ-אפ ולחסימה 🌟
-    limitBannerText: "הגעת למגבלת ההודעות היומית ⏳",
-    lockedPlaceholder: "המכסה היומית הסתיימה ⏳ (לחץ לשדרוג)",
-    limitAlertTitle: "הפסקה קצרה ⏳",
+    limitBannerText: "הגעת למגבלת ההודעות ⏳",
+    limitAlertTitle: "נגמרו ההודעות ⏳",
+    
+    // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
+    lockedPlaceholder: (plan: string) => {
+      const p = String(plan || '').toLowerCase();
+      if (p.includes('monthly') || p.includes('onetime')) return "מכסת ההודעות הסתיימה ⏳ (לחץ לשדרוג)";
+      return "המכסה היומית הסתיימה ⏳ (לחץ לשדרוג)";
+    },
+
+    limitReached: (plan: string) => {
+      const p = String(plan || '').toLowerCase();
+      if (p.includes('monthly')) return "הגעת למכסת ה-50 הודעות שלך לחודש זה 😕";
+      if (p.includes('onetime')) return "ניצלת את כל 50 ההודעות מחבילת הפרו שלך 😕";
+      return "הגעת למכסת ה-3 הודעות שלך ל-24 שעות הקרובות 😕";
+    },
+
     trialPopupTitle: "נגמרו לך ההודעות להיום! 🛑",
     trialPopupSubtitle: "אבל רגע... קח הודעת PREMIUM אחת במתנה כדי לראות את הכוח האמיתי של המערכת.",
     trialPopupBtn: "🎁 פתח הודעת פרימיום עכשיו",
     trialPopupClose: "לא תודה, אני אעדיף לחכות 24 שעות"
   },
   Russian: {
-    placeholder: "Есть вопрос?...", send: "Отправить", limitReached: "Вы исчерпали лимит на следующие 24 часа 😕", upgradeNow: "Обновить сейчас", loading: "Поиск решений...", newChat: "➕ Новый чат", historyTitle: "История чатов", langTitle: "Изменить язык", newChatName: "Новый чат",
+    placeholder: "Есть вопрос?...", send: "Отправить", 
+    upgradeNow: "Обновить сейчас", loading: "Поиск решений...", newChat: "➕ Новый чат", historyTitle: "История чатов", langTitle: "Изменить язык", newChatName: "Новый чат",
     greeting: (name: string) => `Привет${name ? ' ' + name : ''}, чем я могу помочь?`,
     deleteAlert: "Удалить чат", deleteConfirm: "Вы уверены, что хотите удалить этот чат?", cancel: "Отмена", delete: "Удалить",
     attachTitle: "Прикрепить файл", attachSubtitle: "Откуда вы хотите загрузить?", camera: "Камера ", gallery: "Галерея ",
@@ -62,17 +91,31 @@ export const TRANSLATIONS = {
     imageSearch: "📷 Поиск по фото",
     videoSearch: "🎥 Поиск по видео",
 
-    // 🌟 הוספות לפופ-אפ ולחסימה 🌟
-    limitBannerText: "Дневной лимит исчерпан ⏳",
-    lockedPlaceholder: "Лимит исчерпан ⏳ (Нажмите для апгрейда)",
-    limitAlertTitle: "Короткий перерыв ⏳",
+    limitBannerText: "Лимит исчерпан ⏳",
+    limitAlertTitle: "Лимит исчерпан ⏳",
+    
+    // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
+    lockedPlaceholder: (plan: string) => {
+      const p = String(plan || '').toLowerCase();
+      if (p.includes('monthly') || p.includes('onetime')) return "Лимит сообщений исчерпан ⏳ (Нажмите)";
+      return "Дневной лимит исчерпан ⏳ (Нажмите)";
+    },
+
+    limitReached: (plan: string) => {
+      const p = String(plan || '').toLowerCase();
+      if (p.includes('monthly')) return "Вы исчерпали лимит в 50 сообщений на этот месяц 😕";
+      if (p.includes('onetime')) return "Вы использовали все 50 сообщений из вашего пакета 😕";
+      return "Вы исчерпали лимит на следующие 24 часа 😕";
+    },
+
     trialPopupTitle: "Бесплатные решения закончились! 🛑",
     trialPopupSubtitle: "Но подождите... возьмите 1 БЕСПЛАТНОЕ Premium сообщение, чтобы увидеть реальную мощь.",
     trialPopupBtn: "🎁 Получить Premium сообщение",
     trialPopupClose: "Нет, спасибо, я подожду 24 часа"
   },
   Arabic: {
-    placeholder: "لديك سؤال؟...", send: "إرسال", limitReached: "لقد وصلت إلى الحد المجاني لمدة 24 ساعة 😕", upgradeNow: "قم بالترقية الآن", loading: "جاري البحث...", newChat: "➕ محادثة جديدة", historyTitle: "سجل الدردشة", langTitle: "تغيير اللغة", newChatName: "محادثة جديدة",
+    placeholder: "لديك سؤال؟...", send: "إرسال", 
+    upgradeNow: "قم بالترقية الآن", loading: "جاري البحث...", newChat: "➕ محادثة جديدة", historyTitle: "سجل الدردشة", langTitle: "تغيير اللغة", newChatName: "محادثة جديدة",
     greeting: (name: string) => `مرحباً${name ? ' ' + name : ''}، كيف يمكنني مساعدتك؟`,
     deleteAlert: "حذف المحادثة", deleteConfirm: "هل أنت متأكد أن تريد حذف هذه المحادثة؟", cancel: "إلغاء", delete: "حذف",
     attachTitle: "إرفاق ملف", attachSubtitle: "من أين تريد الرفع؟", camera: "كاميرا ", gallery: "معرض الصور ",
@@ -86,10 +129,23 @@ export const TRANSLATIONS = {
     imageSearch: "📷 بحث بالصور",
     videoSearch: "🎥 بحث بالفيديو",
 
-    // 🌟 הוספות לפופ-אפ ולחסימה 🌟
-    limitBannerText: "تم الوصول للحد اليومي ⏳",
-    lockedPlaceholder: "تم الوصول للحد اليومي ⏳ (اضغط للترقية)",
-    limitAlertTitle: "استراحة قصيرة ⏳",
+    limitBannerText: "تم الوصول للحد ⏳",
+    limitAlertTitle: "نفدت الرسائل ⏳",
+    
+    // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
+    lockedPlaceholder: (plan: string) => {
+      const p = String(plan || '').toLowerCase();
+      if (p.includes('monthly') || p.includes('onetime')) return "انتهى رصيد الرسائل ⏳ (اضغط للترقية)";
+      return "تم الوصول للحد اليومي ⏳ (اضغط)";
+    },
+
+    limitReached: (plan: string) => {
+      const p = String(plan || '').toLowerCase();
+      if (p.includes('monthly')) return "لقد وصلت إلى حد الـ 50 رسالة الخاص بك لهذا الشهر 😕";
+      if (p.includes('onetime')) return "لقد استخدمت جميع الرسائل الـ 50 من باقتك 😕";
+      return "لقد وصلت إلى الحد المجاني لمدة 24 ساعة 😕";
+    },
+
     trialPopupTitle: "نفدت الرسائل المجانية! 🛑",
     trialPopupSubtitle: "لكن انتظر... خذ رسالة Premium مجانية واحدة لترى القوة الحقيقية لـ FIXRA.",
     trialPopupBtn: "🎁 احصل على رسالة Premium",
