@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Animated, Image, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Animated, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChatSession } from '../types';
@@ -60,9 +60,11 @@ export default function ChatSideMenu({
             <Text style={[styles.menuActionText, { color: '#00e5ff' }]} numberOfLines={1} adjustsFontSizeToFit>Community</Text>
           </TouchableOpacity>
 
+          {/* 🌟 האייקון החדש והנקי של ה-Upgrade 🌟 */}
           <TouchableOpacity style={styles.menuActionItem} onPress={onOpenPaywall}>
             <View style={[styles.menuActionCircle, { backgroundColor: 'rgba(138, 43, 226, 0.15)' }]}>
-              <Image source={require('../../assets/icon.png')} style={{ width: 22, height: 22, resizeMode: 'contain' }} />
+              <Ionicons name="flash" size={14} color="#b19cd9" style={{ marginBottom: -2 }} />
+              <Text style={{ color: '#b19cd9', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 }}>PRO</Text>
             </View>
             <Text style={[styles.menuActionText, { color: '#b19cd9' }]} numberOfLines={1} adjustsFontSizeToFit>Upgrade</Text>
           </TouchableOpacity>
