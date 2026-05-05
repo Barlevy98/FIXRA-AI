@@ -117,7 +117,6 @@ Deno.serve(async (req) => {
     let adminSettings: any = null;
     if (supabase) {
       try {
-        // השרת שלנו עוקף את ה-RLS כי הוא משתמש ב-Service Role Key
         const { data } = await supabase.from('admin_settings').select('*').eq('id', 'current').single();
         adminSettings = data;
       } catch (e) {
@@ -134,11 +133,13 @@ Deno.serve(async (req) => {
     let cycleMs = 86400000; 
     let isTotalLimit = false; 
     let hasQuota = true;
+    let isFallbackMode = false; // 🌟 הוספנו דגל למצב גיבוי
     
     if (userId && supabase) {
+      // 🌟 הוספנו את שליפת הנתונים של ה-Fallback 🌟
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('current_plan, is_pro, lifetime_messages, cycle_used_messages, cycle_start_date, bonus_solves_balance')
+        .select('current_plan, is_pro, lifetime_messages, cycle_used_messages, cycle_start_date, bonus_solves_balance, fallback_used_messages, fallback_start_date')
         .eq('user_id', userId)
         .single();
 
@@ -192,7 +193,24 @@ Deno.serve(async (req) => {
           const lastReset = profile.cycle_start_date || 0;
           const isNewCycle = (now - lastReset) >= cycleMs;
           const activeCount = isNewCycle ? 0 : currentCycleCount;
-          if (activeCount >= limit && bonus <= 0) hasQuota = false;
+          
+          // 🌟 לוגיקת החסימה והגיבוי החדשה 🌟
+          if (activeCount >= limit && bonus <= 0) {
+            if (serverValidatedPlan === 'PRO_monthly') {
+               const fbStart = profile.fallback_start_date || 0;
+               // בודקים אם עברו 24 שעות מהאיפוס האחרון של הגיבוי
+               const fbUsed = (now - fbStart >= 86400000) ? 0 : (profile.fallback_used_messages || 0);
+               
+               if (fbUsed < 2) {
+                  isFallbackMode = true;
+                  hasQuota = true;
+               } else {
+                  hasQuota = false;
+               }
+            } else {
+               hasQuota = false;
+            }
+          }
         }
       }
 
@@ -207,6 +225,10 @@ Deno.serve(async (req) => {
 
       // 🌟 2. בדיקת FEATURE FLAGS מול העלאת וידאו ותמונות 🌟
       if (hasMedia) {
+        // 🌟 חסימת תמונות במצב גיבוי 🌟
+        if (isFallbackMode) {
+           return new Response(JSON.stringify({ isError: true, errorType: "fatal", message: "ניצלת את המכסה החודשית. במצב גיבוי ניתן לשלוח טקסט בלבד. לשליחת תמונות, שדרג ל-Premium!", category: gameCategory || 'General' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         if (media.type === 'video' && featureFlags.enable_video === false) {
            return new Response(JSON.stringify({ isError: true, errorType: "fatal", message: "Video analysis is temporarily disabled for maintenance.", category: gameCategory || 'General' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -219,7 +241,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 🌟 3. בניית ה-System Instruction (שואב מה-DB, משתמש ב-Fallback למקרה חירום) 🌟
     let systemInstruction = adminSettings?.system_prompt || `You are an ELITE gaming AI assistant and video analysis expert.
 CRITICAL JSON RULES: Output ONLY valid raw JSON. No markdown.
 ANTI-HALLUCINATION & ELITE GAMER LOGIC:
@@ -246,7 +267,6 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
     let rawParsed: any = null;
     let providerUsed = "";
     
-    // 🌟 התיקון שמונע הזיות! ה-AI יודע באיזה משחק אתה משחק 🌟
     const activeGameContext = (gameCategory && gameCategory !== 'General' && gameCategory !== 'Unknown')
       ? `[CRITICAL CONTEXT: The user is currently playing "${gameCategory}". All your answers MUST be strictly related to this game.]\n\n`
       : '';

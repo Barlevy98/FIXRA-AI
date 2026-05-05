@@ -19,12 +19,12 @@ import SettingsScreen from './SettingsScreen';
 import CommunityModal from '../components/CommunityModal'; 
 import GameLibraryModal from '../components/GameLibraryModal'; 
 import { getTranslation } from '../utils/translations';
-import { getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus, saveBookmark, getUserBookmarks } from '../utils/db'; // הוסר checkIfUserIsAdmin
+// 🌟 הוספנו את syncUserFullName לייבוא מ-db
+import { getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus, saveBookmark, getUserBookmarks, syncUserFullName } from '../utils/db'; 
 import MessageBubble from '../components/MessageBubble';
 import ChatInputArea from '../components/ChatInputArea';
 import ChatSideMenu from '../components/ChatSideMenu';
 import { useChatManager } from '../../hooks/useChatManager';
-// הוסר הייבוא של AdminDashboardModal
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -93,12 +93,26 @@ export default function ChatScreen() {
   const [dismissedTrialPopup, setDismissedTrialPopup] = useState(false);
   const [isLimitModalVisible, setIsLimitModalVisible] = useState(false);
 
-  // הוסרו הסטייטים של isAdminUser ו-isAdminVisible
-
   const slideAnim = useRef(new Animated.Value(screenWidth)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // הוסר ה-useEffect שבדק סטטוס אדמין
+  // 🌟 הפונקציה החדשה שמושכת את השם מ-Clerk וזורקת אותו ל-Supabase 🌟
+  useEffect(() => {
+    const syncName = async () => {
+      // מוודא שיש למשתמש שם ושזה לא ריק
+      if (user?.id && user?.fullName) {
+        try {
+          const token = await getToken({ template: 'supabase' });
+          if (token) {
+            await syncUserFullName(token, user.id, user.fullName);
+          }
+        } catch (e) {
+          console.log("Error syncing user name:", e);
+        }
+      }
+    };
+    syncName();
+  }, [user?.id, user?.fullName]);
 
   useEffect(() => {
     const syncBookmarks = async () => {
@@ -387,7 +401,6 @@ export default function ChatScreen() {
           onDeleteSession={chatManager.deleteSession}
           newChatText={t.newChat}
           historyTitleText={t.historyTitle}
-          // הוסרו הפרופס של האדמין 
         />
 
         <View style={styles.header}>
@@ -445,7 +458,6 @@ export default function ChatScreen() {
                 onSendMessage={handleSendMessage}
                 onOpenCamera={openCamera}
                 onOpenGallery={openGallery}
-                // 🌟 התיקון בשורת ההקלדה 🌟
                 placeholder={hasReachedLimit && !isTrialActive ? t.lockedPlaceholder(currentPlan) : t.placeholder}
                 cameraText={t.camera}
                 galleryText={t.gallery}
@@ -494,7 +506,6 @@ export default function ChatScreen() {
               </View>
               
               <Text style={styles.limitModalTitle}>{t.limitAlertTitle}</Text>
-              {/* 🌟 התיקון בטקסט של הפופ-אפ 🌟 */}
               <Text style={styles.limitModalSubtitle}>{t.limitReached(currentPlan)}</Text>
               
               <TouchableOpacity 
@@ -531,7 +542,6 @@ export default function ChatScreen() {
   );
 }
 
-// ... styles נשארים אותו דבר
 const styles = StyleSheet.create({
   background: { flex: 1 },
   container: { flex: 1 },
@@ -548,128 +558,20 @@ const styles = StyleSheet.create({
   messageBubbleWrapper: { maxWidth: '85%', marginBottom: 15 },
   userBubbleWrapper: { alignSelf: 'flex-end' },
   botBubbleWrapper: { alignSelf: 'flex-start' },
-  paywallTrapOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 100,
-    backgroundColor: 'transparent'
-  },
-  
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20
-  },
-
-  trialPopupCard: {
-    backgroundColor: '#0a0026',
-    width: '100%',
-    borderRadius: 25,
-    padding: 25,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ff00cc',
-    shadowColor: '#ff00cc',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 10
-  },
-  trialIconWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 0, 204, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#ff00cc'
-  },
-  trialPopupTitle: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: 10
-  },
-  trialPopupSubtitle: {
-    color: '#aaaaaa',
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 30,
-    lineHeight: 22
-  },
-  trialPopupBtn: {
-    width: '100%',
-    borderRadius: 15,
-    overflow: 'hidden',
-    marginBottom: 20
-  },
-  trialPopupBtnGradient: {
-    paddingVertical: 16,
-    alignItems: 'center'
-  },
-  trialPopupBtnText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 0.5
-  },
-  trialPopupCloseBtn: {
-    padding: 10
-  },
-  trialPopupCloseText: {
-    color: '#666666',
-    fontSize: 13,
-    fontWeight: 'bold',
-    textDecorationLine: 'underline'
-  },
-
-  limitModalCard: {
-    backgroundColor: '#0a0026',
-    width: '100%',
-    borderRadius: 25,
-    padding: 25,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#8a2be2', 
-    shadowColor: '#8a2be2',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 15,
-    elevation: 8
-  },
-  limitIconWrapper: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(138, 43, 226, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#8a2be2'
-  },
-  limitModalTitle: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 8
-  },
-  limitModalSubtitle: {
-    color: '#aaaaaa',
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 25,
-    lineHeight: 22
-  },
-  limitCancelText: {
-    color: '#888888',
-    fontSize: 15,
-    fontWeight: 'bold',
-  }
+  paywallTrapOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: 'transparent' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  trialPopupCard: { backgroundColor: '#0a0026', width: '100%', borderRadius: 25, padding: 25, alignItems: 'center', borderWidth: 1, borderColor: '#ff00cc', shadowColor: '#ff00cc', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 10 },
+  trialIconWrapper: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255, 0, 204, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#ff00cc' },
+  trialPopupTitle: { color: '#ffffff', fontSize: 24, fontWeight: '900', textAlign: 'center', marginBottom: 10 },
+  trialPopupSubtitle: { color: '#aaaaaa', fontSize: 15, textAlign: 'center', marginBottom: 30, lineHeight: 22 },
+  trialPopupBtn: { width: '100%', borderRadius: 15, overflow: 'hidden', marginBottom: 20 },
+  trialPopupBtnGradient: { paddingVertical: 16, alignItems: 'center' },
+  trialPopupBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 0.5 },
+  trialPopupCloseBtn: { padding: 10 },
+  trialPopupCloseText: { color: '#666666', fontSize: 13, fontWeight: 'bold', textDecorationLine: 'underline' },
+  limitModalCard: { backgroundColor: '#0a0026', width: '100%', borderRadius: 25, padding: 25, alignItems: 'center', borderWidth: 1, borderColor: '#8a2be2', shadowColor: '#8a2be2', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 15, elevation: 8 },
+  limitIconWrapper: { width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(138, 43, 226, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#8a2be2' },
+  limitModalTitle: { color: '#ffffff', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 },
+  limitModalSubtitle: { color: '#aaaaaa', fontSize: 15, textAlign: 'center', marginBottom: 25, lineHeight: 22 },
+  limitCancelText: { color: '#888888', fontSize: 15, fontWeight: 'bold' }
 });

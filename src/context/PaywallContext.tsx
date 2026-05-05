@@ -23,7 +23,10 @@ type PaywallContextType = {
   isTrialActive: boolean; 
   startPremiumTrial: () => Promise<boolean>;
   refreshSubscription: () => Promise<void>; 
-  incrementLocalCounter: () => void; // 🌟 הוספנו את זה כדי שה-UI יתעדכן מיד!
+  incrementLocalCounter: () => void;
+  // 🌟 סטייטים חדשים עבור מצב הגיבוי (Fallback)
+  isFallbackMode: boolean;
+  fallbackUsedMessages: number;
 };
 
 const PaywallContext = createContext<PaywallContextType | undefined>(undefined);
@@ -43,6 +46,11 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
 
   const [hasUsedTrial, setHasUsedTrial] = useState(false); 
   const [isTrialActive, setIsTrialActive] = useState(false); 
+
+  // 🌟 סטייטים למצב Fallback
+  const [isFallbackMode, setIsFallbackMode] = useState(false);
+  const [fallbackUsedMessages, setFallbackUsedMessages] = useState(0);
+  const [fallbackStartDate, setFallbackStartDate] = useState(Date.now());
 
   useEffect(() => {
     AsyncStorage.getItem('@app_language').then(savedLang => {
@@ -72,6 +80,11 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         let startDate = data.cycle_start_date || now;
         let plan = data.current_plan || 'Free';
         
+        // נתוני Fallback מהדאטה-בייס
+        let fbUsed = data.fallback_used_messages || 0;
+        let fbStart = data.fallback_start_date || now;
+        let fallbackActive = false;
+
         let updates: any = {};
         let needsUpdate = false;
 
@@ -79,14 +92,22 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         const isOneTime = plan === 'PRO_onetime';
         const cycleMs = isMonthly ? THIRTY_DAYS_MS : ONE_DAY_MS;
 
+        // איפוס חבילה רגילה (חודשית או יומית)
         if (!isOneTime && (now - startDate >= cycleMs)) {
           usedCount = 0;
           startDate = now;
           updates.cycle_used_messages = 0;
           updates.cycle_start_date = now;
           needsUpdate = true;
+          
+          // אם התאפס החודש, מבטלים את מצב הגיבוי
+          fbUsed = 0;
+          fbStart = now;
+          updates.fallback_used_messages = 0;
+          updates.fallback_start_date = now;
         }
 
+        // המרת PRO_onetime ל-Free כשנגמרת המכסה
         if (isOneTime && usedCount >= limit) {
           plan = 'Free';
           limit = 3;
@@ -100,6 +121,19 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
           needsUpdate = true;
         }
 
+        // 🌟 הפעלת ואיפוס מצב גיבוי (Fallback) רק עבור PRO_monthly שנגמרה להם המכסה
+        if (plan === 'PRO_monthly' && usedCount >= limit) {
+          fallbackActive = true;
+          // אם עברו 24 שעות מהאיפוס האחרון של הגיבוי היומי
+          if (now - fbStart >= ONE_DAY_MS) {
+            fbUsed = 0;
+            fbStart = now;
+            updates.fallback_used_messages = 0;
+            updates.fallback_start_date = now;
+            needsUpdate = true;
+          }
+        }
+
         if (needsUpdate) {
           await updateSubscriptionData(token, user.id, updates);
         }
@@ -111,6 +145,11 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         setIsPro(data.is_pro || plan !== 'Free');
         setCurrentPlan(plan);
         setHasUsedTrial(data.has_used_premium_trial || false);
+        
+        // עדכון סטייטים של ה-Fallback
+        setIsFallbackMode(fallbackActive);
+        setFallbackUsedMessages(fbUsed);
+        setFallbackStartDate(fbStart);
 
       } else {
         await updateSubscriptionData(token, user.id, {
@@ -120,7 +159,9 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
           cycle_start_date: now,
           current_plan: 'Free',
           is_pro: false,
-          has_used_premium_trial: false 
+          has_used_premium_trial: false,
+          fallback_used_messages: 0,
+          fallback_start_date: now
         });
         setCycleUsedMessages(0);
         setLifetimeMessages(0);
@@ -129,6 +170,9 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         setIsPro(false);
         setCurrentPlan('Free');
         setHasUsedTrial(false);
+        setIsFallbackMode(false);
+        setFallbackUsedMessages(0);
+        setFallbackStartDate(now);
       }
     } catch (e) {
       console.error('Error loading user data from DB:', e);
@@ -139,9 +183,13 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     await loadUserData();
   };
 
-  // 🌟 הפונקציה שמקפיצה את המספר באפליקציה באותה שניה 🌟
   const incrementLocalCounter = () => {
-    setCycleUsedMessages(prev => prev + 1);
+    // 🌟 אם אנחנו במצב גיבוי, נקדם את מונה הגיבוי. אם לא, את המונה הרגיל.
+    if (isFallbackMode) {
+      setFallbackUsedMessages(prev => prev + 1);
+    } else {
+      setCycleUsedMessages(prev => prev + 1);
+    }
     setLifetimeMessages(prev => prev + 1);
   };
 
@@ -195,6 +243,10 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
               updates = { is_pro: true, current_plan: 'PRO_onetime', cycle_limit: 50, cycle_used_messages: 0, cycle_start_date: now };
             }
 
+            // איפוס גם למשתני ה-Fallback בעת רכישה
+            updates.fallback_used_messages = 0;
+            updates.fallback_start_date = now;
+
             await updateSubscriptionData(token, user.id, updates);
             await loadUserData(); 
             alert(`Purchase successful! Welcome to ${plan}`);
@@ -231,6 +283,9 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     setCycleStartDate(now);
     setHasUsedTrial(false); 
     setIsTrialActive(false);
+    setIsFallbackMode(false);
+    setFallbackUsedMessages(0);
+    setFallbackStartDate(now);
     
     if (user?.id) {
        const token = await getToken({ template: 'supabase' });
@@ -241,21 +296,34 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
               cycle_limit: 3,
               cycle_used_messages: 0,
               cycle_start_date: now,
-              has_used_premium_trial: false
+              has_used_premium_trial: false,
+              fallback_used_messages: 0,
+              fallback_start_date: now
           });
        }
     }
   };
 
-  const hasReachedLimit = !isTrialActive && (cycleUsedMessages >= cycleLimit);
+  // 🌟 הגדרה חכמה של hasReachedLimit
+  let calculatedHasReachedLimit = false;
+  if (!isTrialActive) {
+    if (currentPlan === 'PRO_monthly' && isFallbackMode) {
+      // אם הוא בגיבוי, הוא נחסם רק אחרי 2 הודעות
+      calculatedHasReachedLimit = fallbackUsedMessages >= 2;
+    } else {
+      // אחרת, הבדיקה הרגילה
+      calculatedHasReachedLimit = cycleUsedMessages >= cycleLimit;
+    }
+  }
 
   return (
     <PaywallContext.Provider value={{ 
       cycleUsedMessages, lifetimeMessages, cycleLimit, cycleStartDate,
-      hasReachedLimit, isPro, currentPlan, purchasePackage,
+      hasReachedLimit: calculatedHasReachedLimit, isPro, currentPlan, purchasePackage,
       chatLanguage, changeLanguage, resetToFree,
       hasUsedTrial, isTrialActive, startPremiumTrial, refreshSubscription,
-      incrementLocalCounter // 🌟 הוספנו את הפונקציה כאן
+      incrementLocalCounter,
+      isFallbackMode, fallbackUsedMessages
     }}>
       {children}
     </PaywallContext.Provider>

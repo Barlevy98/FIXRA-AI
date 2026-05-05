@@ -14,7 +14,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.fixra.app"
+      "bundleIdentifier": "com.fixra.app",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +29,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FIXRA AI to access your photos so you can upload gameplay screenshots for AI analysis.",
+          "cameraPermission": "Allow FIXRA AI to use your camera so you can take pictures of your screen for AI gameplay analysis.",
+          "microphonePermission": "Allow FIXRA AI to access your microphone for recording video gameplay."
+        }
+      ]
     ]
   }
 }

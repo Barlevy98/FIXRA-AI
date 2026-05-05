@@ -54,7 +54,8 @@ export const markTutorialAsSeen = async (clerkToken: string, userId: string) => 
 
 export const getUserSubscriptionData = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
-  const { data, error } = await supabase.from('user_profiles').select('lifetime_messages, cycle_limit, current_plan, is_pro, cycle_used_messages, cycle_start_date, has_used_premium_trial').eq('user_id', userId).single();
+  // 🌟 כאן הוספנו את המשיכה של נתוני ה-Fallback 🌟
+  const { data, error } = await supabase.from('user_profiles').select('lifetime_messages, cycle_limit, current_plan, is_pro, cycle_used_messages, cycle_start_date, has_used_premium_trial, fallback_used_messages, fallback_start_date').eq('user_id', userId).single();
   return error && error.code !== 'PGRST116' ? null : data;
 };
 
@@ -159,6 +160,24 @@ export const updateUserName = async (clerkToken: string, userId: string, fullNam
   const supabase = getAuthenticatedSupabase(clerkToken);
   const { error } = await supabase.from('user_profiles').upsert({ user_id: userId, full_name: fullName, updated_at: Date.now() });
   return !error;
+};
+
+// 🌟 הפונקציה החדשה שלנו שתעדכן את השם רק אם הוא ריק 🌟
+export const syncUserFullName = async (clerkToken: string, userId: string, fullName: string) => {
+  try {
+    const supabase = getAuthenticatedSupabase(clerkToken);
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ full_name: fullName, updated_at: Date.now() })
+      .eq('user_id', userId)
+      .is('full_name', null);
+      
+    if (error) {
+       console.error("Failed to sync full name:", error);
+    }
+  } catch (error) {
+    console.error("Failed to sync full name:", error);
+  }
 };
 
 export const deleteChatSession = async (clerkToken: string, sessionId: string) => {
