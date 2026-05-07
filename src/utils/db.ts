@@ -204,42 +204,21 @@ export async function reportMessageToCloud(token: string, userId: string, messag
   }
 }
 
-// 🌟 פונקציית יצירת בקשת משיכה - מעודכנת 🌟
+// 🌟 פונקציית יצירת בקשת משיכה - מאובטחת באמצעות RPC 🌟
 export const submitWithdrawalRequest = async (clerkToken: string, userId: string, amount: number, paypalEmail: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
   
-  // 1. קודם כל, רושמים את הבקשה בטבלת withdrawal_requests
-  const { error: requestError } = await supabase.from('withdrawal_requests').insert([{
-    user_id: userId,
-    amount: amount,
-    paypal_email: paypalEmail,
-    status: 'pending' // סטטוס התחלתי הוא תמיד בהמתנה
-  }]);
-  
-  if (requestError) {
-    console.error("Supabase Withdrawal Error:", requestError);
+  // קוראים לפונקציית השרת המאובטחת שמבצעת הכל יחד כטרנזקציה אחת (רושמת את הבקשה + מעדכנת את היתרות)
+  const { data, error } = await supabase.rpc('request_withdrawal', {
+    p_user_id: userId,
+    p_amount: amount,
+    p_paypal_email: paypalEmail
+  });
+
+  // ה-RPC מחזיר true אם הכל עבר בהצלחה, או false אם למשתמש לא היה מספיק כסף
+  if (error || !data) {
+    console.error("Supabase RPC Withdrawal Error:", error);
     return false;
-  }
-
-  // 2. אם הבקשה נרשמה בהצלחה, אנחנו חייבים "להקפיא" את הכסף:
-  // נמשוך את היתרות הנוכחיות
-  const { data: currentProfile } = await supabase
-    .from('user_profiles')
-    .select('earnings_balance, pending_balance')
-    .eq('user_id', userId)
-    .single();
-
-  if (currentProfile) {
-    const newEarnings = Math.max(0, (currentProfile.earnings_balance || 0) - amount); // מורידים מהזמין
-    const newPending = (currentProfile.pending_balance || 0) + amount; // מוסיפים לבהמתנה
-
-    // נעדכן את היתרות במסד הנתונים
-    await supabase.from('user_profiles').upsert({ 
-      user_id: userId, 
-      earnings_balance: newEarnings,
-      pending_balance: newPending,
-      updated_at: Date.now() 
-    });
   }
   
   return true;

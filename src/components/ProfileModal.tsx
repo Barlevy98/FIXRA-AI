@@ -47,7 +47,7 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
   const safeLimit = cycleLimit || (isPro ? 50 : 3);
   const safeStartDate = cycleStartDate || Date.now();
 
-  const planLower = (currentPlan || '').toLowerCase(); // מוודאים שאין קריסה אם currentPlan ריק
+  const planLower = (currentPlan || '').toLowerCase();
   const isPremium = planLower === 'premium';
   const isProPlan = planLower.startsWith('pro');
   const isOneTime = planLower.includes('one') || planLower.includes('time') || planLower.includes('חד');
@@ -55,7 +55,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
 
   const themeColor = isPremium ? '#00e5ff' : isProPlan ? '#ff00cc' : '#aaaaaa';
 
-  // 📅 חישוב תאריך החידוש הבא 📅
   let renewalText = '';
   if (isPremium) {
     renewalText = 'Auto-renews monthly';
@@ -67,18 +66,15 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
     renewalText = `Resets on ${nextDate.toLocaleDateString('he-IL')}`;
   }
 
-  // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
   const getActivePlanFeatures = () => {
     if (isPremium) {
       return ['Unlimited mission solves', 'AI video & image analysis', 'Unlimited guide links', 'No ads', 'Fastest results ⚡', 'Priority processing'];
     }
     
-    // אם המילה 'pro' קיימת בתוך השם של החבילה, הוא פרו
     if (planLower.includes('pro')) {
       return ['50 mission solves', 'AI image analysis', '3 guide links per solution', 'Priority support'];
     }
     
-    // ברירת מחדל: חינם
     return ['3 free messages per day', 'Basic AI text help', 'Ads included'];
   };
 
@@ -223,11 +219,12 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                 </TouchableOpacity>
               </View>
 
-              {!isPro && (
+              {/* התיקון: אנחנו מסתירים את הכפתור רק אם הוא פרימיום! ככה משתמשי פרו יוכלו לשדרג */}
+              {!isPremium && (
                 <TouchableOpacity style={styles.storeButton} onPress={handleOpenStore}>
                   <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.storeButtonGradient}>
-                    <Ionicons name="flash" size={20} color="#ffffff" style={{marginRight: 8}} />
-                    <Text style={styles.storeButtonText}>Upgrade to Pro</Text>
+                    <Ionicons name={isFree ? "flash" : "diamond"} size={20} color="#ffffff" style={{marginRight: 8}} />
+                    <Text style={styles.storeButtonText}>{isFree ? 'Upgrade to Pro' : 'Upgrade to Premium 👑'}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               )}

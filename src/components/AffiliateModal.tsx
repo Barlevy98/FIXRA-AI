@@ -172,7 +172,6 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
     Share.share({ message: Platform.OS === 'android' ? link : message, url: Platform.OS === 'ios' ? link : undefined });
   };
 
-  // פונקציית עזר לרינדור היסטוריית המשיכות
   const renderWithdrawalHistory = () => {
     if (!withdrawalHistory || withdrawalHistory.length === 0) return null;
     
@@ -248,17 +247,31 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
                         <Text style={styles.stepDesc}>Send your link to friends via WhatsApp or Discord.</Text>
                       </View>
                     </View>
+                    
+                    {/* סעיף הפתרונות / או סעיף הרווח ליוצרים */}
                     <View style={styles.stepRow}>
                       <View style={[styles.stepIconWrapper, { borderColor: themeColor }]}><Ionicons name="trophy-outline" size={20} color={themeColor} /></View>
                       <View style={styles.stepTextContainer}>
-                        <Text style={styles.stepTitle}>Earn Rewards</Text>
+                        <Text style={styles.stepTitle}>{isCreator ? "Earn Rewards" : "Unlock Free Solves"}</Text>
                         <Text style={styles.stepDesc}>
                           {isCreator 
                             ? "Earn real cash commissions for every PRO upgrade." 
-                            : "1. Invite 5 friends to unlock 2 free Premium AI solves.\n2. Earn REAL CASH commissions if they upgrade to PRO!"}
+                            : "Invite 5 friends to unlock 2 free Premium AI solves."}
                         </Text>
                       </View>
                     </View>
+
+                    {/* סעיף הכסף המופרד אך ורק למצב Invite & Earn */}
+                    {!isCreator && (
+                      <View style={styles.stepRow}>
+                        <View style={[styles.stepIconWrapper, { borderColor: themeColor }]}><Ionicons name="cash-outline" size={20} color={themeColor} /></View>
+                        <View style={styles.stepTextContainer}>
+                          <Text style={styles.stepTitle}>Earn Real Cash 💵</Text>
+                          <Text style={styles.stepDesc}>Earn REAL CASH commissions if your friends upgrade to PRO!</Text>
+                        </View>
+                      </View>
+                    )}
+                    
                   </View>
                   <TouchableOpacity style={[styles.actionBtn, {marginTop: 20}]} onPress={() => setShowGuide(false)}>
                     <LinearGradient colors={themeGradient as [string, string]} style={styles.actionBtnGradient}>
@@ -410,7 +423,6 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
                     </LinearGradient>
                   </TouchableOpacity>
 
-                  {/* היסטוריית משיכות מוצגת כאן */}
                   {renderWithdrawalHistory()}
                 </View>
 
@@ -520,7 +532,6 @@ export default function AffiliateModal({ visible, onClose, mode }: AffiliateModa
                     </LinearGradient>
                   </TouchableOpacity>
 
-                  {/* היסטוריית משיכות מוצגת גם למשתמשים רגילים */}
                   {renderWithdrawalHistory()}
                 </View>
               )}
@@ -606,6 +617,5 @@ const styles = StyleSheet.create({
   legalScroll: { maxHeight: 300 },
   legalText: { color: '#ccc', fontSize: 15, lineHeight: 24 },
   bold: { fontWeight: 'bold', color: '#fff' },
-  // סגנונות חדשים להיסטוריית משיכות
   historyCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', padding: 15, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' }
 });

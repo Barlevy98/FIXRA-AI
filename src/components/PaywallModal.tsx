@@ -12,14 +12,22 @@ interface PaywallModalProps {
 
 export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
   
-  const { purchasePackage, resetToFree, currentPlan } = usePaywall();
+  const { purchasePackage, currentPlan } = usePaywall();
 
   const [isCheckoutVisible, setIsCheckoutVisible] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [initialMode, setInitialMode] = useState<'monthly' | 'one-time'>('monthly');
   const [isPurchasing, setIsPurchasing] = useState(false);
 
-  const handlePlanSelect = (plan: string) => {
+  // 🌟 הלוגיקה החכמה שמזהה את החבילה בכל מצב (גם אם RevenueCat מחזיר שמות שונים)
+  const planLower = (currentPlan || '').toLowerCase();
+  const isPremium = planLower.includes('premium');
+  const isProMonthly = planLower.includes('pro') && !planLower.includes('one') && !planLower.includes('time');
+  const isProOneTime = planLower.includes('pro') && (planLower.includes('one') || planLower.includes('time'));
+
+  const handlePlanSelect = (plan: string, mode: 'monthly' | 'one-time' = 'monthly') => {
     setSelectedPlan(plan);
+    setInitialMode(mode);
     setIsCheckoutVisible(true);
   };
 
@@ -63,12 +71,6 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
               <View style={styles.headerContainer}>
                 <Text style={styles.mainTitle}>Never Get Stuck Again</Text>
                 <Text style={styles.mainSubtitle}>Unlock instant gaming solutions.</Text>
-                
-                {__DEV__ && (
-                  <TouchableOpacity onPress={resetToFree} style={{ marginTop: 10, padding: 5 }}>
-                    <Text style={{ color: '#555', fontSize: 12 }}>[Dev: Reset to Free]</Text>
-                  </TouchableOpacity>
-                )}
               </View>
 
               <View style={styles.packsContainer}>
@@ -103,10 +105,10 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                       <FeatureItem text="Fast results" color="#ff00cc" />
                     </View>
                     
-                    <TouchableOpacity onPress={() => handlePlanSelect('PRO')} activeOpacity={0.8} style={styles.btnWrapper} disabled={currentPlan === 'PRO_monthly'}>
-                      <LinearGradient colors={['#b300ff', '#ff00cc']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionButton}>
-                        <Text style={styles.actionButtonText}>
-                          {currentPlan === 'PRO_monthly' ? 'Active ✨' : 'Get PRO ⚡'}
+                    <TouchableOpacity onPress={() => handlePlanSelect('PRO', 'monthly')} activeOpacity={0.8} style={styles.btnWrapper} disabled={isProMonthly || isPremium}>
+                      <LinearGradient colors={(isProMonthly || isPremium) ? ['#444', '#222'] : ['#b300ff', '#ff00cc']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionButton}>
+                        <Text style={[styles.actionButtonText, (isProMonthly || isPremium) && {color: '#aaaaaa'}]}>
+                          {isPremium ? 'Included in Premium' : isProMonthly ? 'Active ✨' : 'Get PRO ⚡'}
                         </Text>
                       </LinearGradient>
                     </TouchableOpacity>
@@ -115,8 +117,10 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                       <View style={styles.oneTimeBadge}>
                         <Text style={styles.oneTimeBadgeText}>PRO ONE-TIME 🪙</Text>
                       </View>
-                      <TouchableOpacity style={styles.oneTimeBtn} onPress={() => handlePlanSelect('PRO')}>
-                         <Text style={styles.oneTimeBtnPrice}>$14.99 <Text style={{fontSize: 10, fontWeight: 'normal'}}>ONLY</Text></Text>
+                      <TouchableOpacity style={styles.oneTimeBtn} onPress={() => handlePlanSelect('PRO', 'one-time')} disabled={isProOneTime || isPremium}>
+                         <Text style={[styles.oneTimeBtnPrice, (isProOneTime || isPremium) && {color: '#888888'}]}>
+                           {isPremium ? 'Included' : isProOneTime ? 'Owned 🪙' : '$14.99 ONLY'}
+                         </Text>
                       </TouchableOpacity>
                     </View>
 
@@ -156,17 +160,19 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                       <FeatureItem text="No ads" color="#00e5ff" />
                     </View>
                     
-                    <TouchableOpacity onPress={() => handlePlanSelect('PREMIUM')} activeOpacity={0.8} style={styles.btnWrapper} disabled={currentPlan === 'PREMIUM'}>
-                      <LinearGradient colors={['#007acc', '#00e5ff']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionButton}>
-                        <Text style={styles.actionButtonText}>
-                          {currentPlan === 'PREMIUM' ? 'Active 👑' : 'Go PREMIUM 👑'}
+                    <TouchableOpacity onPress={() => handlePlanSelect('PREMIUM')} activeOpacity={0.8} style={styles.btnWrapper} disabled={isPremium}>
+                      <LinearGradient colors={isPremium ? ['#444', '#222'] : ['#007acc', '#00e5ff']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionButton}>
+                        <Text style={[styles.actionButtonText, isPremium && {color: '#aaaaaa'}]}>
+                          {isPremium ? 'Active 👑' : 'Go PREMIUM 👑'}
                         </Text>
                       </LinearGradient>
                     </TouchableOpacity>
 
-                    <View style={[styles.oneTimeContainer, { borderColor: '#00e5ff' }]}>
-                      <TouchableOpacity style={styles.oneTimeBtn} onPress={() => handlePlanSelect('PREMIUM')}>
-                         <Text style={[styles.oneTimeBtnPrice, { color: '#00e5ff' }]}>$14.99 <Text style={{fontSize: 10, fontWeight: 'normal', color: '#aaaaaa'}}>ONLY</Text></Text>
+                    <View style={[styles.oneTimeContainer, { borderColor: '#00e5ff', opacity: isPremium ? 0.5 : 1 }]}>
+                      <TouchableOpacity style={styles.oneTimeBtn} onPress={() => handlePlanSelect('PREMIUM')} disabled={isPremium}>
+                         <Text style={[styles.oneTimeBtnPrice, { color: isPremium ? '#888' : '#00e5ff' }]}>
+                           {isPremium ? 'Owned' : '$14.99 ONLY'}
+                         </Text>
                       </TouchableOpacity>
                     </View>
 
@@ -192,6 +198,9 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
       <CheckoutModal 
         visible={isCheckoutVisible} 
         planName={selectedPlan || ''}
+        initialMode={initialMode}
+        isProMonthly={isProMonthly}
+        isProOneTime={isProOneTime}
         onClose={() => setIsCheckoutVisible(false)}
         onConfirm={(mode) => handleFinalPurchase(mode)}
         isPurchasing={isPurchasing}
@@ -228,7 +237,7 @@ function TimelineStep({ icon, title, desc, isLast = false }: { icon: string, tit
   );
 }
 
-function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: { visible: boolean, planName: string, onClose: () => void, onConfirm: (mode: 'one-time'|'monthly') => void, isPurchasing: boolean }) {
+function CheckoutModal({ visible, planName, initialMode, isProMonthly, isProOneTime, onClose, onConfirm, isPurchasing }: { visible: boolean, planName: string, initialMode: 'monthly'|'one-time', isProMonthly: boolean, isProOneTime: boolean, onClose: () => void, onConfirm: (mode: 'one-time'|'monthly') => void, isPurchasing: boolean }) {
   const slideAnim = useRef(new Animated.Value(Dimensions.get('window').height)).current;
   const [isRendered, setIsRendered] = useState(visible);
   
@@ -236,7 +245,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: 
 
   useEffect(() => {
     if (visible) {
-      setPaymentMode('monthly');
+      setPaymentMode(initialMode);
       setIsRendered(true);
       Animated.spring(slideAnim, {
         toValue: 0,
@@ -254,7 +263,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: 
         setIsRendered(false);
       });
     }
-  }, [visible, planName]);
+  }, [visible, planName, initialMode]);
 
   if (!isRendered) return null;
 
@@ -263,7 +272,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: 
 
   if (planName === 'PRO') {
     if (paymentMode === 'one-time') {
-      checkoutPrice = '$15.99';
+      checkoutPrice = '$14.99';
       steps = [
         { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
         { icon: "battery-half-outline", title: "50 Total Solves", desc: "You get exactly 50 solves. Does not renew." },
@@ -278,7 +287,7 @@ function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: 
       ];
     }
   } else {
-    checkoutPrice = '$15.99';
+    checkoutPrice = '$14.99';
     steps = [
       { icon: "flash-outline", title: "Instant Activation", desc: "Your account is upgraded immediately." },
       { icon: "infinite-outline", title: "Unlimited Power", desc: "Never run out of solves. Truly unlimited." },
@@ -299,19 +308,23 @@ function CheckoutModal({ visible, planName, onClose, onConfirm, isPurchasing }: 
         {planName === 'PRO' && (
           <View style={styles.toggleContainer}>
             <TouchableOpacity 
-              style={[styles.toggleBtn, paymentMode === 'monthly' && styles.toggleBtnActive]} 
-              onPress={() => setPaymentMode('monthly')}
-              disabled={isPurchasing}
+              style={[styles.toggleBtn, paymentMode === 'monthly' && styles.toggleBtnActive, isProMonthly && {opacity: 0.4}]} 
+              onPress={() => !isProMonthly && setPaymentMode('monthly')}
+              disabled={isPurchasing || isProMonthly}
             >
-              <Text style={[styles.toggleBtnText, paymentMode === 'monthly' && styles.toggleBtnTextActive]}>Monthly ($9.99)</Text>
+              <Text style={[styles.toggleBtnText, paymentMode === 'monthly' && styles.toggleBtnTextActive]}>
+                {isProMonthly ? 'Monthly (Active)' : 'Monthly ($9.99)'}
+              </Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={[styles.toggleBtn, paymentMode === 'one-time' && styles.toggleBtnActive]} 
-              onPress={() => setPaymentMode('one-time')}
-              disabled={isPurchasing}
+              style={[styles.toggleBtn, paymentMode === 'one-time' && styles.toggleBtnActive, isProOneTime && {opacity: 0.4}]} 
+              onPress={() => !isProOneTime && setPaymentMode('one-time')}
+              disabled={isPurchasing || isProOneTime}
             >
-              <Text style={[styles.toggleBtnText, paymentMode === 'one-time' && styles.toggleBtnTextActive]}>One-Time ($15.99)</Text>
+              <Text style={[styles.toggleBtnText, paymentMode === 'one-time' && styles.toggleBtnTextActive]}>
+                {isProOneTime ? 'One-Time (Owned)' : 'One-Time ($14.99)'}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
