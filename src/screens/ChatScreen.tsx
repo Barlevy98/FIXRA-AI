@@ -19,7 +19,7 @@ import SettingsScreen from './SettingsScreen';
 import CommunityModal from '../components/CommunityModal'; 
 import GameLibraryModal from '../components/GameLibraryModal'; 
 import { getTranslation } from '../utils/translations';
-// 🌟 הוספנו את syncUserFullName לייבוא מ-db
+
 import { getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus, saveBookmark, getUserBookmarks, syncUserFullName } from '../utils/db'; 
 import MessageBubble from '../components/MessageBubble';
 import ChatInputArea from '../components/ChatInputArea';
