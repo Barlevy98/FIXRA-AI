@@ -3,7 +3,6 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import SettingsScreen from './SettingsScreen';
 
 // --- Mocks (זיופים של סביבת האפליקציה) ---
-
 const mockSignOut = jest.fn(() => Promise.resolve());
 const mockGetToken = jest.fn(() => Promise.resolve('mock-token'));
 
@@ -49,7 +48,6 @@ jest.mock('../utils/db', () => ({
   updateUserHapticsPreference: jest.fn(() => Promise.resolve(true))
 }));
 
-// --- משתיק אזהרות act של טיימרים ודאטה-בייס ברקע ---
 const originalError = console.error;
 beforeAll(() => {
   console.error = (...args) => {
@@ -68,11 +66,11 @@ describe('QA: SettingsScreen Component', () => {
   it('Should render all settings sections correctly', async () => {
     const { getByText } = render(<SettingsScreen visible={true} onClose={() => {}} />);
     
-    // מוודאים שכל האזורים החדשים מופיעים במסך (מחכים שהכל ייטען)
+    // התיקון: השמות פה תואמים במדויק לשמות במערכת האמיתית!
     await waitFor(() => {
       expect(getByText('Preferences')).toBeTruthy();
-      expect(getByText('Support & Feedback')).toBeTruthy(); // 🌟 תוקן לשם החדש!
-      expect(getByText('Account Management')).toBeTruthy(); 
+      expect(getByText('Support')).toBeTruthy(); 
+      expect(getByText('Danger Zone')).toBeTruthy(); 
     });
   });
 
@@ -100,5 +98,4 @@ describe('QA: SettingsScreen Component', () => {
 
     expect(mockSignOut).toHaveBeenCalled();
   });
-
 });

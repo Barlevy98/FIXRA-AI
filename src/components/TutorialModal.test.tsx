@@ -6,7 +6,6 @@ import TutorialModal from './TutorialModal';
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
   notificationAsync: jest.fn(),
-  // הנה השורה שהייתה חסרה ל-Jest:
   ImpactFeedbackStyle: { Medium: 'medium', Light: 'light' } 
 }));
 
@@ -25,8 +24,9 @@ describe('QA: TutorialModal Component', () => {
     const { getByText } = render(
       <TutorialModal visible={true} onClose={() => {}} />
     );
-    expect(getByText('How it Works')).toBeTruthy();
-    expect(getByText('Capture & Upload')).toBeTruthy();
+    // התיקון: אנחנו בודקים את הטקסטים שמופיעים בשקף *הראשון*
+    expect(getByText('Welcome to FIXRA AI')).toBeTruthy();
+    expect(getByText('Your elite gaming assistant is ready.')).toBeTruthy();
   });
 
   it('Should trigger onClose function when the Skip button is pressed', () => {

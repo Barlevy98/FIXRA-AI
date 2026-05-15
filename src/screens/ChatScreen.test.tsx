@@ -45,6 +45,11 @@ jest.mock('expo-linear-gradient', () => {
   };
 });
 
+// התיקון הקריטי שמונע את הקריסה של הפונטים והאייקונים
+jest.mock('@expo/vector-icons', () => ({
+  Ionicons: 'Ionicons'
+}));
+
 jest.mock('react-native-safe-area-context', () => {
   const React = require('react');
   return {
@@ -85,7 +90,6 @@ jest.mock('../components/ChatInputArea', () => {
   };
 });
 
-// זיוף ישיר (Inline) של כל המודלים כדי ש-Jest לא ייחנק מה-Hoisting
 jest.mock('../components/ChatSideMenu', () => ({ __esModule: true, default: () => null }));
 jest.mock('../components/GameLibraryModal', () => ({ __esModule: true, default: () => null }));
 jest.mock('../components/PaywallModal', () => ({ __esModule: true, default: () => null }));
@@ -120,7 +124,15 @@ jest.mock('../utils/translations', () => ({
   getTranslation: () => ({
     greeting: (name: string) => `Hello ${name}!`,
     placeholder: 'Type your message...',
-    lockedPlaceholder: 'Locked...',
+    lockedPlaceholder: () => 'Locked...',
+    limitAlertTitle: 'Limit Reached',
+    limitReached: (plan: string) => `Limit reached for ${plan}`,
+    upgradeNow: 'Upgrade',
+    cancel: 'Cancel',
+    trialPopupTitle: 'Trial',
+    trialPopupSubtitle: 'Sub',
+    trialPopupBtn: 'Start',
+    trialPopupClose: 'Close'
   })
 }));
 
@@ -133,30 +145,9 @@ jest.mock('../utils/db', () => ({
   saveBookmark: jest.fn(() => Promise.resolve(true)),
   getUserBookmarks: jest.fn(() => Promise.resolve([])),
   getUserChatSessions: jest.fn(() => Promise.resolve([])),
-  saveChatSession: jest.fn(() => Promise.resolve(true))
+  saveChatSession: jest.fn(() => Promise.resolve(true)),
+  syncUserFullName: jest.fn(() => Promise.resolve(true))
 }));
-
-jest.mock('@expo/vector-icons', () => ({ __esModule: true, Ionicons: () => null }));
-jest.mock('expo-haptics', () => ({
-  impactAsync: jest.fn(),
-  notificationAsync: jest.fn(),
-  ImpactFeedbackStyle: { Medium: 'medium', Light: 'light' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' }
-}));
-jest.mock('expo-image-picker', () => ({}));
-jest.mock('expo-video-thumbnails', () => ({}));
-jest.mock('expo-file-system/legacy', () => ({}));
-
-const originalError = console.error;
-beforeAll(() => {
-  console.error = (...args) => {
-    if (/was not wrapped in act/.test(args[0])) return; 
-    originalError.call(console, ...args);
-  };
-});
-afterAll(() => {
-  console.error = originalError;
-});
 
 // ---------------------------------------------------------
 // 5. הבדיקות 
