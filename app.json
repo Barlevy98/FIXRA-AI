@@ -42,7 +42,8 @@
           "cameraPermission": "Allow FIXRA AI to use your camera so you can take pictures of your screen for AI gameplay analysis.",
           "microphonePermission": "Allow FIXRA AI to access your microphone for recording video gameplay."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {
