@@ -15,7 +15,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.fixra.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +26,10 @@
         "backgroundColor": "#050012"
       },
       "package": "com.fixra.app",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -37,6 +43,11 @@
           "microphonePermission": "Allow FIXRA AI to access your microphone for recording video gameplay."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b144f10c-d747-4759-9922-6541cdcfa7ba"
+      }
+    }
   }
 }
