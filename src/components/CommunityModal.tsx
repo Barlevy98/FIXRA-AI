@@ -36,16 +36,22 @@ export default function CommunityModal({ visible, onClose }: CommunityModalProps
               Connect with thousands of gamers, share tips, report bugs, and get exclusive pro updates!
             </Text>
 
-            {/* כפתור הדיסקורד */}
-            <TouchableOpacity style={[styles.socialBtn, { backgroundColor: '#5865F2' }]} onPress={() => openLink('https://discord.com')}>
-              <Ionicons name="logo-discord" size={24} color="#ffffff" style={styles.btnIcon} />
-              <Text style={styles.socialBtnText}>Join our Discord Server</Text>
+            {/* כפתור אינסטגרם */}
+            <TouchableOpacity style={[styles.socialBtn, { backgroundColor: '#E1306C' }]} onPress={() => openLink('https://www.instagram.com/fixra_ai?igsh=MW9xc3IyZ2dpYnRiaw==&utm_source=ig_contact_invite')}>
+              <Ionicons name="logo-instagram" size={24} color="#ffffff" style={styles.btnIcon} />
+              <Text style={styles.socialBtnText}>Follow us on Instagram</Text>
             </TouchableOpacity>
 
             {/* כפתור X / טוויטר */}
-            <TouchableOpacity style={[styles.socialBtn, { backgroundColor: '#000000', borderWidth: 1, borderColor: '#333' }]} onPress={() => openLink('https://twitter.com')}>
+            <TouchableOpacity style={[styles.socialBtn, { backgroundColor: '#000000', borderWidth: 1, borderColor: '#333' }]} onPress={() => openLink('https://x.com/your_placeholder')}>
               <Ionicons name="logo-twitter" size={24} color="#ffffff" style={styles.btnIcon} />
               <Text style={styles.socialBtnText}>Follow us on X</Text>
+            </TouchableOpacity>
+
+            {/* כפתור פייסבוק */}
+            <TouchableOpacity style={[styles.socialBtn, { backgroundColor: '#1877F2' }]} onPress={() => openLink('https://facebook.com/your_placeholder')}>
+              <Ionicons name="logo-facebook" size={24} color="#ffffff" style={styles.btnIcon} />
+              <Text style={styles.socialBtnText}>Like us on Facebook</Text>
             </TouchableOpacity>
 
           </LinearGradient>

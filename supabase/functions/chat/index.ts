@@ -113,7 +113,6 @@ Deno.serve(async (req) => {
 
     const supabase = getSupabaseClient();
     
-    // 🌟 1. טעינת הגדרות המנהל בזמן אמת (PROMPT + FEATURE FLAGS) מתוך ה-DB 🌟
     let adminSettings: any = null;
     if (supabase) {
       try {
@@ -133,10 +132,9 @@ Deno.serve(async (req) => {
     let cycleMs = 86400000; 
     let isTotalLimit = false; 
     let hasQuota = true;
-    let isFallbackMode = false; // 🌟 הוספנו דגל למצב גיבוי
+    let isFallbackMode = false; 
     
     if (userId && supabase) {
-      // 🌟 הוספנו את שליפת הנתונים של ה-Fallback 🌟
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('current_plan, is_pro, lifetime_messages, cycle_used_messages, cycle_start_date, bonus_solves_balance, fallback_used_messages, fallback_start_date')
@@ -194,11 +192,9 @@ Deno.serve(async (req) => {
           const isNewCycle = (now - lastReset) >= cycleMs;
           const activeCount = isNewCycle ? 0 : currentCycleCount;
           
-          // 🌟 לוגיקת החסימה והגיבוי החדשה 🌟
           if (activeCount >= limit && bonus <= 0) {
             if (serverValidatedPlan === 'PRO_monthly') {
                const fbStart = profile.fallback_start_date || 0;
-               // בודקים אם עברו 24 שעות מהאיפוס האחרון של הגיבוי
                const fbUsed = (now - fbStart >= 86400000) ? 0 : (profile.fallback_used_messages || 0);
                
                if (fbUsed < 2) {
@@ -223,9 +219,7 @@ Deno.serve(async (req) => {
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // 🌟 2. בדיקת FEATURE FLAGS מול העלאת וידאו ותמונות 🌟
       if (hasMedia) {
-        // 🌟 חסימת תמונות במצב גיבוי 🌟
         if (isFallbackMode) {
            return new Response(JSON.stringify({ isError: true, errorType: "fatal", message: "ניצלת את המכסה החודשית. במצב גיבוי ניתן לשלוח טקסט בלבד. לשליחת תמונות, שדרג ל-Premium!", category: gameCategory || 'General' }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -273,10 +267,33 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
       
     const finalUserQuery = `${activeGameContext}User query: ${userText || 'Analyze this.'}`;
 
+    // =========================================================================
+    // 🌟 AI CACHE CHECK (ההגנה החדשה מפני שריפת מכסות!) 🌟
+    // בודק מטמון רק אם זו ההודעה הראשונה בשיחה (אין היסטוריה) ואין תמונה מצורפת.
+    // =========================================================================
+    const canCacheAI = !hasMedia && history.length === 0 && userText && userText.trim().length > 3;
+    const aiCacheKey = `ai_ans:${gameCategory}:${userText?.trim().substring(0, 100)}`;
+    let isFromCache = false;
+
+    if (canCacheAI) {
+      try {
+        const cachedRawParsed = await getCachedOrFetch(supabase, aiCacheKey, async () => null);
+        if (cachedRawParsed && cachedRawParsed.message) {
+          rawParsed = cachedRawParsed;
+          isFromCache = true;
+          providerUsed = "Supabase DB Cache (Zero API Cost 🚀)";
+        }
+      } catch (e) {
+        console.warn("AI Cache check failed", e);
+      }
+    }
+    // =========================================================================
+
     let attemptCount = 0;
     const MAX_RETRIES = 2;
     let lastError = null;
 
+    // 🌟 המעגל ירוץ *רק* אם התשובה לא נמצאה בזיכרון המטמון 🌟
     while (attemptCount < MAX_RETRIES && !rawParsed) {
       attemptCount++;
       let responseText = "";
@@ -324,7 +341,11 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
             rawParsed.youtubeQuery = "";
             rawParsed.wikiQuery = "";
             rawParsed.category = "Unknown";
+        } else if (canCacheAI) {
+            // 🌟 שומר את התשובה לזיכרון המטמון כדי שהמשתמש הבא לא יבזבז API 🌟
+            await getCachedOrFetch(supabase, aiCacheKey, async () => rawParsed);
         }
+
       } catch (err: any) {
         lastError = err;
         console.warn(`[AI ERROR] Attempt ${attemptCount} failed: ${err.message}`);
