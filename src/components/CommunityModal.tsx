@@ -43,7 +43,7 @@ export default function CommunityModal({ visible, onClose }: CommunityModalProps
             </TouchableOpacity>
 
             {/* כפתור X / טוויטר */}
-            <TouchableOpacity style={[styles.socialBtn, { backgroundColor: '#000000', borderWidth: 1, borderColor: '#333' }]} onPress={() => openLink('https://x.com/your_placeholder')}>
+            <TouchableOpacity style={[styles.socialBtn, { backgroundColor: '#000000', borderWidth: 1, borderColor: '#333' }]} onPress={() => openLink('https://x.com/fixra_ai?s=11')}>
               <Ionicons name="logo-twitter" size={24} color="#ffffff" style={styles.btnIcon} />
               <Text style={styles.socialBtnText}>Follow us on X</Text>
             </TouchableOpacity>
