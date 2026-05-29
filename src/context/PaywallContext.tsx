@@ -54,10 +54,21 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       if (savedLang) setChatLanguage(savedLang);
     });
     
-    if (user) {
-      Purchases.logIn(user.id); 
-      loadUserData();
-    }
+    // הפונקציה החדשה שעוטפת את הלוגין ב-try-catch
+    const initRevenueCatLogin = async () => {
+      if (user?.id) {
+        try {
+          await Purchases.logIn(user.id);
+          loadUserData();
+        } catch (error) {
+          console.error("Error logging into RevenueCat:", error);
+          // במקרה של שגיאה (כדי שלא יקרוס), עדיין נטען את נתוני המשתמש
+          loadUserData();
+        }
+      }
+    };
+
+    initRevenueCatLogin();
   }, [user]);
 
   const loadUserData = async () => {
@@ -86,8 +97,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
 
         const isOneTime = plan === 'PRO_onetime';
 
-        // 🌟 התיקון: האפליקציה מאפסת בעצמה *רק* את החבילה החינמית (כל 24 שעות).
-        // חבילות ה-PRO וה-PREMIUM מאופסות אוטומטית רק על ידי ה-Webhook של RevenueCat!
         if (plan === 'Free' && (now - startDate >= ONE_DAY_MS)) {
           usedCount = 0;
           startDate = now;
@@ -101,7 +110,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
           updates.fallback_start_date = now;
         }
 
-        // המרת PRO_onetime ל-Free כשנגמרת המכסה
         if (isOneTime && usedCount >= limit) {
           plan = 'Free';
           limit = 3;

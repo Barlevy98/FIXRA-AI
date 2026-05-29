@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react'; // 1. הוספנו את useEffect
-import { Platform } from 'react-native'; // לייבוא זיהוי מערכת ההפעלה
+import React, { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ClerkProvider, SignedIn, SignedOut } from '@clerk/clerk-expo';
-import Purchases from 'react-native-purchases'; // 2. ייבוא של RevenueCat
+import Purchases from 'react-native-purchases';
 
 import ChatScreen from './src/screens/ChatScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -12,7 +12,6 @@ import { PaywallProvider } from './src/context/PaywallContext';
 import TermsModal from './src/components/TermsModal'; 
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
-// שליפת המפתח של RevenueCat מה-.env
 const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_APPLE_KEY || '';
 
 if (!CLERK_PUBLISHABLE_KEY) {
@@ -20,17 +19,23 @@ if (!CLERK_PUBLISHABLE_KEY) {
 }
 
 export default function App() {
+  const [isRcReady, setIsRcReady] = useState(false);
 
-  // 3. הגדרת RevenueCat ברגע שהאפליקציה נדלקת
   useEffect(() => {
     const setupPurchases = async () => {
       if (REVENUECAT_API_KEY) {
-        // אנחנו מגדירים את המפתח. ה-configure יודע לחבר אותנו לשרת
-        Purchases.configure({ apiKey: REVENUECAT_API_KEY });
-        console.log("🚀 RevenueCat configured successfully");
+        // עוטפים ב-try-catch כדי למנוע קריסה קטלנית אם המפתח שגוי
+        try {
+          await Purchases.configure({ apiKey: REVENUECAT_API_KEY });
+          console.log("🚀 RevenueCat configured successfully");
+        } catch (e) {
+          console.error("Failed to configure RevenueCat:", e);
+        }
       } else {
         console.warn("⚠️ RevenueCat API Key is missing in .env");
       }
+      // נותנים אור ירוק לאפליקציה להמשיך לעלות רק אחרי שזה הסתיים
+      setIsRcReady(true);
     };
 
     setupPurchases();
@@ -42,10 +47,12 @@ export default function App() {
         <StatusBar style="light" />
         
         <SignedIn>
-          <PaywallProvider>
-            <TermsModal />
-            <ChatScreen />
-          </PaywallProvider>
+          {isRcReady && (
+            <PaywallProvider>
+              <TermsModal />
+              <ChatScreen />
+            </PaywallProvider>
+          )}
         </SignedIn>
         
         <SignedOut>
