@@ -12,14 +12,13 @@ interface PaywallModalProps {
 
 export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
   
-  const { purchasePackage, currentPlan } = usePaywall();
+  const { purchasePackage, currentPlan, resetToFree } = usePaywall();
 
   const [isCheckoutVisible, setIsCheckoutVisible] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [initialMode, setInitialMode] = useState<'monthly' | 'one-time'>('monthly');
   const [isPurchasing, setIsPurchasing] = useState(false);
 
-  // 🌟 הלוגיקה החכמה שמזהה את החבילה בכל מצב (גם אם RevenueCat מחזיר שמות שונים)
   const planLower = (currentPlan || '').toLowerCase();
   const isPremium = planLower.includes('premium');
   const isProMonthly = planLower.includes('pro') && !planLower.includes('one') && !planLower.includes('time');
@@ -70,7 +69,16 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
               
               <View style={styles.headerContainer}>
                 <Text style={styles.mainTitle}>Never Get Stuck Again</Text>
-                <Text style={styles.mainSubtitle}>Unlock instant gaming solutions.</Text>
+                {/* לחיצה ארוכה על תת-הכותרת תאפס את החבילה לבדיקות */}
+                <TouchableOpacity onLongPress={resetToFree} delayLongPress={2000}>
+                  <Text style={styles.mainSubtitle}>Unlock instant gaming solutions.</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* הבאנר העליון החדש */}
+              <View style={styles.topBanner}>
+                <Ionicons name="flash" size={16} color="#ffcc00" style={{ marginRight: 6 }} />
+                <Text style={styles.topBannerText}>Save 10–15 minutes every time you get stuck.</Text>
               </View>
 
               <View style={styles.packsContainer}>
@@ -86,7 +94,8 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                     
                     <View style={styles.packHeaderClickable}>
                       <Text style={styles.packTitle}>PRO</Text>
-                      <Text style={styles.packSubDescHeader}>Smart Gaming Help</Text>
+                      <Text style={styles.packSubDescHeader}>Solve missions <Text style={{ color: '#ff00cc' }}>in seconds</Text></Text>
+                      <Text style={[styles.packSubDescHeader, { color: '#ff00cc', marginTop: 2 }]}>not minutes.</Text>
                       <Text style={styles.packSubDescSmall}>Perfect for casual players who want fast solutions</Text>
                       
                       <View style={styles.priceContainer}>
@@ -99,10 +108,11 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                     </View>
 
                     <View style={styles.featuresListContainer}>
-                      <FeatureItem text="50 mission solves / month" color="#ff00cc" />
+                      <FeatureItem text="Up to 50 instant fixes" subText="(save hours every month)" subColor="#ff00cc" color="#ff00cc" />
                       <FeatureItem text="AI help (image + text input)" color="#ff00cc" />
                       <FeatureItem text="Up to 3 guide links per solution" color="#ff00cc" />
                       <FeatureItem text="Fast results" color="#ff00cc" />
+                      <FeatureItem text="Cancel anytime" color="#ff00cc" />
                     </View>
                     
                     <TouchableOpacity onPress={() => handlePlanSelect('PRO', 'monthly')} activeOpacity={0.8} style={styles.btnWrapper} disabled={isProMonthly || isPremium}>
@@ -115,7 +125,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 
                     <View style={styles.oneTimeContainer}>
                       <View style={styles.oneTimeBadge}>
-                        <Text style={styles.oneTimeBadgeText}>PRO ONE-TIME 🪙</Text>
+                        <Text style={styles.oneTimeBadgeText}>PRO ONE-TIME ⏱️</Text>
                       </View>
                       <TouchableOpacity style={styles.oneTimeBtn} onPress={() => handlePlanSelect('PRO', 'one-time')} disabled={isProOneTime || isPremium}>
                          <Text style={[styles.oneTimeBtnPrice, (isProOneTime || isPremium) && {color: '#888888'}]}>
@@ -138,7 +148,8 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                     
                     <View style={styles.packHeaderClickable}>
                       <Text style={styles.packTitle}>PREMIUM</Text>
-                      <Text style={styles.packSubDescHeader}>Unlimited Power</Text>
+                      <Text style={styles.packSubDescHeader}>Never get stuck again</Text>
+                      <Text style={[styles.packSubDescHeader, { color: '#00e5ff', marginTop: 2 }]}>unlimited power.</Text>
                       <Text style={styles.packSubDescSmall}>Instant solutions with maximum speed and accuracy</Text>
                       
                       <View style={styles.priceContainer}>
@@ -151,19 +162,20 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                     </View>
 
                     <View style={styles.featuresListContainer}>
-                      <FeatureItem text="Unlimited mission solves" color="#00e5ff" />
+                      <FeatureItem text="Unlimited instant solutions" subText="(zero interruptions)" subColor="#00e5ff" color="#00e5ff" />
                       <FeatureItem text="Personal AI Assistant 🤖" color="#00e5ff" />
                       <FeatureItem text="AI help (image + text + video)" color="#00e5ff" />
                       <FeatureItem text="All guide links included" color="#00e5ff" />
                       <FeatureItem text="Priority AI (fastest results) ⚡" color="#00e5ff" />
                       <FeatureItem text="Zero waiting time ⏱️" color="#00e5ff" />
                       <FeatureItem text="No ads" color="#00e5ff" />
+                      <FeatureItem text="Cancel anytime" color="#00e5ff" />
                     </View>
                     
                     <TouchableOpacity onPress={() => handlePlanSelect('PREMIUM')} activeOpacity={0.8} style={styles.btnWrapper} disabled={isPremium}>
                       <LinearGradient colors={isPremium ? ['#444', '#222'] : ['#007acc', '#00e5ff']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.actionButton}>
                         <Text style={[styles.actionButtonText, isPremium && {color: '#aaaaaa'}]}>
-                          {isPremium ? 'Active 👑' : 'Go PREMIUM 👑'}
+                          {isPremium ? 'Active 👑' : 'Activate 👑'}
                         </Text>
                       </LinearGradient>
                     </TouchableOpacity>
@@ -181,10 +193,13 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 
               </View>
 
-              <Text style={styles.bottomFooterText}>Join 10,000 players already using Fixra</Text>
+              <View style={styles.footerRow}>
+                <Ionicons name="people" size={16} color="#aaaaaa" style={{ marginRight: 6 }} />
+                <Text style={styles.bottomFooterText}>Join 10,000 players already using Fixra</Text>
+              </View>
 
               <TouchableOpacity onPress={() => Linking.openURL('https://quirky-match-61c.notion.site/FIXRA-Terms-of-Service-Privacy-Policy-34745f65405f80d2b137c2f4ddd7ae2e')}>
-                <Text style={{ color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginTop: 15, textDecorationLine: 'underline' }}>
+                <Text style={{ color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginTop: 10, textDecorationLine: 'underline' }}>
                   Terms of Service & Privacy Policy
                 </Text>
               </TouchableOpacity>
@@ -210,11 +225,14 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 }
 
 // ==========================================
-function FeatureItem({ text, color }: { text: string, color: string }) {
+function FeatureItem({ text, subText, subColor, color }: { text: string, subText?: string, subColor?: string, color: string }) {
   return (
     <View style={styles.featureRow}>
       <Ionicons name="checkmark" size={14} color={color} style={styles.featureIcon} />
-      <Text style={styles.featureText}>{text}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.featureText}>{text}</Text>
+        {subText && <Text style={[styles.featureSubText, { color: subColor }]}>{subText}</Text>}
+      </View>
     </View>
   );
 }
@@ -365,17 +383,32 @@ const styles = StyleSheet.create({
   background: { flex: 1 },
   safeArea: { flex: 1 },
   closeBtn: { position: 'absolute', top: Platform.OS === 'ios' ? 50 : 20, left: 20, zIndex: 10, padding: 10 },
-  scrollContent: { paddingHorizontal: 5, paddingTop: Platform.OS === 'ios' ? 80 : 50, paddingBottom: 30 },
-  headerContainer: { alignItems: 'center', marginBottom: 35 },
+  scrollContent: { paddingHorizontal: 5, paddingTop: Platform.OS === 'ios' ? 70 : 40, paddingBottom: 30 },
+  headerContainer: { alignItems: 'center', marginBottom: 20 },
   mainTitle: { color: '#ffffff', fontSize: 32, fontWeight: '900', textAlign: 'center', lineHeight: 38 },
   mainSubtitle: { color: '#cccccc', fontSize: 15, marginTop: 8, textAlign: 'center' },
   
+  topBanner: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', 
+    borderWidth: 1, 
+    borderColor: 'rgba(255, 0, 204, 0.3)', 
+    borderRadius: 20, 
+    paddingVertical: 10, 
+    paddingHorizontal: 20, 
+    alignSelf: 'center', 
+    marginBottom: 25 
+  },
+  topBannerText: { color: '#ffffff', fontSize: 13, fontWeight: 'bold' },
+
   packsContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', paddingHorizontal: 2 },
   packWrapper: { width: '48.5%', position: 'relative' },
   
   packInner: { 
     borderRadius: 20, 
-    padding: 12, 
+    padding: 10, 
     paddingBottom: 20, 
     borderWidth: 2, 
     alignItems: 'center', 
@@ -383,9 +416,9 @@ const styles = StyleSheet.create({
   },
   
   packHeaderClickable: { width: '100%', alignItems: 'center', marginBottom: 15 },
-  packTitle: { color: '#ffffff', fontSize: 24, fontWeight: '900', textAlign: 'center', marginBottom: 4 },
-  packSubDescHeader: { color: '#ffffff', fontSize: 13, fontWeight: '600', textAlign: 'center', marginBottom: 6 },
-  packSubDescSmall: { color: '#aaaaaa', fontSize: 11, textAlign: 'center', marginBottom: 15, paddingHorizontal: 2, lineHeight: 14 },
+  packTitle: { color: '#ffffff', fontSize: 24, fontWeight: '900', textAlign: 'center', marginBottom: 6 },
+  packSubDescHeader: { color: '#ffffff', fontSize: 13, fontWeight: 'bold', textAlign: 'center' },
+  packSubDescSmall: { color: '#aaaaaa', fontSize: 11, textAlign: 'center', marginBottom: 15, marginTop: 10, paddingHorizontal: 2, lineHeight: 14 },
   
   priceContainer: { alignItems: 'center', marginBottom: 5 },
   packPriceRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' },
@@ -397,6 +430,7 @@ const styles = StyleSheet.create({
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12, width: '100%' },
   featureIcon: { marginRight: 6, marginTop: 1 },
   featureText: { color: '#ffffff', fontSize: 11, flexShrink: 1, lineHeight: 16 },
+  featureSubText: { fontSize: 10, marginTop: 2 },
 
   badge: { position: 'absolute', top: -12, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, zIndex: 5 },
   badgeText: { color: '#000000', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
@@ -408,7 +442,7 @@ const styles = StyleSheet.create({
   oneTimeContainer: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#ff00cc',
+    borderColor: '#ffcc00',
     borderRadius: 15,
     paddingVertical: 8,
     alignItems: 'center',
@@ -440,7 +474,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold'
   },
 
-  bottomFooterText: { color: '#666666', fontSize: 13, textAlign: 'center', marginTop: 40, fontWeight: '500' },
+  footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 35 },
+  bottomFooterText: { color: '#aaaaaa', fontSize: 13, fontWeight: '500' },
 
   checkoutOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end', zIndex: 100 },
   checkoutSheet: { backgroundColor: '#0a0026', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, paddingBottom: Platform.OS === 'ios' ? 50 : 30, borderWidth: 1, borderColor: '#333', borderBottomWidth: 0 },
