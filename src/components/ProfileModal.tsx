@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, Image, Platform, ScrollView, Alert, TextInput, KeyboardAvoidingView } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, Image, Platform, ScrollView, Alert, TextInput, KeyboardAvoidingView, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -91,11 +91,19 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
 
   const handleCancelSubscription = () => {
     Alert.alert(
-      "Cancel Subscription",
-      "Are you sure? Your plan will remain active until the end of your billing cycle.",
+      "Manage Subscription",
+      "To cancel your subscription, you need to manage it in your Apple ID settings. It will remain active until the end of the current billing cycle.",
       [
-        { text: "Keep Plan", style: "cancel" },
-        { text: "Yes, Cancel", style: "destructive", onPress: () => { resetToFree(); setShowPlanDetails(false); } }
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Go to Settings", 
+          onPress: () => {
+            if (Platform.OS === 'ios') {
+              Linking.openURL('https://apps.apple.com/account/subscriptions');
+            }
+            setShowPlanDetails(false);
+          }
+        }
       ]
     );
   };
@@ -219,7 +227,6 @@ export default function ProfileModal({ visible, onClose, onOpenPaywall }: Profil
                 </TouchableOpacity>
               </View>
 
-              {/* התיקון: אנחנו מסתירים את הכפתור רק אם הוא פרימיום! ככה משתמשי פרו יוכלו לשדרג */}
               {!isPremium && (
                 <TouchableOpacity style={styles.storeButton} onPress={handleOpenStore}>
                   <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.storeButtonGradient}>

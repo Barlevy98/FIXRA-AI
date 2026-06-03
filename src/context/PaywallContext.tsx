@@ -218,10 +218,16 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       
       if (offerings.current !== null) {
         let selectedPackage: PurchasesPackage | null = null;
+        const availablePackages = offerings.current.availablePackages;
 
-        if (plan === 'PRO_monthly') selectedPackage = offerings.current.monthly;
-        if (plan === 'PRO_onetime') selectedPackage = offerings.current.annual; 
-        if (plan === 'PREMIUM') selectedPackage = offerings.current.lifetime;
+        // השינוי הקריטי: התאמה מדויקת למזהים החדשים ב-RevenueCat
+        if (plan === 'PRO_monthly') {
+          selectedPackage = availablePackages.find(p => p.identifier === '$rc_monthly') || null;
+        } else if (plan === 'PRO_onetime') {
+          selectedPackage = availablePackages.find(p => p.identifier === '$rc_lifetime') || null;
+        } else if (plan === 'PREMIUM') {
+          selectedPackage = availablePackages.find(p => p.identifier === 'premium_monthly') || null;
+        }
 
         if (selectedPackage) {
           const { customerInfo } = await Purchases.purchasePackage(selectedPackage);
@@ -248,6 +254,8 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
             await loadUserData(); 
             alert(`Purchase successful! Welcome to ${plan}`);
           }
+        } else {
+           console.log(`Package configuration not found for: ${plan}`);
         }
       }
     } catch (e: any) {

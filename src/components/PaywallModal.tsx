@@ -193,14 +193,6 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                       </LinearGradient>
                     </TouchableOpacity>
 
-                    <View style={[styles.oneTimeContainer, { borderColor: '#00e5ff', opacity: isPremium ? 0.5 : 1 }]}>
-                      <TouchableOpacity style={styles.oneTimeBtn} onPress={() => handlePlanSelect('PREMIUM')} disabled={isPremium}>
-                         <Text style={[styles.oneTimeBtnPrice, { color: isPremium ? '#888' : '#00e5ff' }]}>
-                           {isPremium ? 'Owned' : '$14.99 ONLY'}
-                         </Text>
-                      </TouchableOpacity>
-                    </View>
-
                   </LinearGradient>
                 </View>
 
