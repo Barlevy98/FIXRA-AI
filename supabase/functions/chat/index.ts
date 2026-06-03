@@ -248,10 +248,11 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
 2. 'taskSummary' MUST be a highly specific actionable gameplay tip.
 3. NEVER return both 'message' and 'taskSummary'. One MUST be empty.
 4. "isFollowUp": Evaluate the chat history. If the user's current query is a continuation or follow-up question about the EXACT SAME boss, mission, or topic as the immediate previous conversation, set this to true. If the user is asking about a NEW boss, NEW mission, or NEW topic, set this to false.
-5. 🚨 NO REPETITION RULE: If 'isFollowUp' is true, you MUST NOT repeat the same advice from your previous messages. You must read the history and provide a completely NEW tip, alternative strategy, or deeper detail.`;
+5. 🚨 NO REPETITION RULE: If 'isFollowUp' is true, you MUST NOT repeat the same advice from your previous messages. You must read the history and provide a completely NEW tip, alternative strategy, or deeper detail.
+6. 🎯 LINKS ON FOLLOW-UPS: If 'isFollowUp' is true, DO NOT generate any search queries (leave youtubeQuery, wikiQuery etc. empty) UNLESS the user explicitly asks for a video, link, or guide. If they explicitly ask for "another video", you MUST generate a NEW, DIFFERENT 'youtubeQuery' to ensure they get a different result than before.`;
 
     if (isActuallyPremium) {
-      systemInstruction += `\n6. 💎 PREMIUM MICRO-CONTEXT PROTOCOL: You are analyzing a Premium user's gameplay. Detect not only the mission, but the CURRENT EXACT MOMENT.
+      systemInstruction += `\n7. 💎 PREMIUM MICRO-CONTEXT PROTOCOL: You are analyzing a Premium user's gameplay. Detect not only the mission, but the CURRENT EXACT MOMENT.
    If possible, based on the user's text or uploaded media, you MUST identify the specific Boss Phase, current attack pattern, or exact mistake the player is making.`;
     }
 
@@ -371,14 +372,7 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
       category: safeString(rawParsed.category) || 'General',
     };
 
-    if (aiResponseJSON.isFollowUp) {
-        aiResponseJSON.youtubeQuery = "";
-        aiResponseJSON.wikiQuery = "";
-        aiResponseJSON.ignQuery = "";
-        aiResponseJSON.polygonQuery = "";
-        aiResponseJSON.mapgenieQuery = "";
-        aiResponseJSON.fextralifeQuery = "";
-    }
+    // 🔴 נמחק בלוק ה- if (aiResponseJSON.isFollowUp) שכפה איפוס של שאילתות החיפוש
 
     let allAvailableLinks: any[] = [];
     

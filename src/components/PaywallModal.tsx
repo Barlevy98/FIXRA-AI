@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Animated, Easing, Dimensions, ActivityIndicator, Linking } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Animated, Easing, Dimensions, ActivityIndicator, Linking, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { usePaywall } from '../context/PaywallContext';
+import Purchases from 'react-native-purchases';
 
 interface PaywallModalProps {
   visible: boolean;
@@ -55,6 +56,24 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
     }
   };
 
+  // פונקציית שחזור הרכישות החדשה
+  const handleRestorePurchases = async () => {
+    setIsPurchasing(true);
+    try {
+      const customerInfo = await Purchases.restorePurchases();
+      if (typeof customerInfo.entitlements.active['Fixra AI Pro'] !== "undefined") {
+        Alert.alert("Success", "Your purchases have been restored! Please restart the app to see the changes.");
+        onClose();
+      } else {
+        Alert.alert("No Purchases Found", "We couldn't find any active purchases for your Apple ID.");
+      }
+    } catch (error: any) {
+      Alert.alert("Error", "Restore failed: " + error.message);
+    } finally {
+      setIsPurchasing(false);
+    }
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalContainer}>
@@ -69,13 +88,11 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
               
               <View style={styles.headerContainer}>
                 <Text style={styles.mainTitle}>Never Get Stuck Again</Text>
-                {/* לחיצה ארוכה על תת-הכותרת תאפס את החבילה לבדיקות */}
                 <TouchableOpacity onLongPress={resetToFree} delayLongPress={2000}>
                   <Text style={styles.mainSubtitle}>Unlock instant gaming solutions.</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* הבאנר העליון החדש */}
               <View style={styles.topBanner}>
                 <Ionicons name="flash" size={16} color="#ffcc00" style={{ marginRight: 6 }} />
                 <Text style={styles.topBannerText}>Save 10–15 minutes every time you get stuck.</Text>
@@ -83,9 +100,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
 
               <View style={styles.packsContainer}>
                 
-                {/* ==================================
-                    1. 💖 PRO Pack
-                ================================== */}
+                {/* 💖 PRO Pack */}
                 <View style={styles.packWrapper}>
                   <View style={[styles.badge, { backgroundColor: '#ffcc00' }]}>
                     <Text style={styles.badgeText}>🔥 MOST POPULAR</Text>
@@ -137,9 +152,7 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                   </LinearGradient>
                 </View>
 
-                {/* ==================================
-                    2. 💎 PREMIUM Pack
-                ================================== */}
+                {/* 💎 PREMIUM Pack */}
                 <View style={styles.packWrapper}>
                   <View style={[styles.badge, { backgroundColor: '#00e5ff' }]}>
                     <Text style={[styles.badgeText, { color: '#000' }]}>👑 BEST VALUE</Text>
@@ -198,8 +211,15 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                 <Text style={styles.bottomFooterText}>Join 10,000 players already using Fixra</Text>
               </View>
 
+              {/* כפתור ה-Restore החדש */}
+              <TouchableOpacity onPress={handleRestorePurchases} disabled={isPurchasing} style={{ marginTop: 25, marginBottom: 15 }}>
+                <Text style={{ color: '#ffffff', fontSize: 14, textAlign: 'center', fontWeight: 'bold' }}>
+                  {isPurchasing ? 'Restoring...' : 'Restore Purchases'}
+                </Text>
+              </TouchableOpacity>
+
               <TouchableOpacity onPress={() => Linking.openURL('https://quirky-match-61c.notion.site/FIXRA-Terms-of-Service-Privacy-Policy-34745f65405f80d2b137c2f4ddd7ae2e')}>
-                <Text style={{ color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginTop: 10, textDecorationLine: 'underline' }}>
+                <Text style={{ color: '#aaaaaa', fontSize: 12, textAlign: 'center', textDecorationLine: 'underline' }}>
                   Terms of Service & Privacy Policy
                 </Text>
               </TouchableOpacity>
