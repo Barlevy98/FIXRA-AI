@@ -203,18 +203,23 @@ export default function PaywallModal({ visible, onClose }: PaywallModalProps) {
                 <Text style={styles.bottomFooterText}>Join 10,000 players already using Fixra</Text>
               </View>
 
-              {/* כפתור ה-Restore החדש */}
+              {/* כפתור ה-Restore */}
               <TouchableOpacity onPress={handleRestorePurchases} disabled={isPurchasing} style={{ marginTop: 25, marginBottom: 15 }}>
                 <Text style={{ color: '#ffffff', fontSize: 14, textAlign: 'center', fontWeight: 'bold' }}>
                   {isPurchasing ? 'Restoring...' : 'Restore Purchases'}
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => Linking.openURL('https://quirky-match-61c.notion.site/FIXRA-Terms-of-Service-Privacy-Policy-34745f65405f80d2b137c2f4ddd7ae2e')}>
-                <Text style={{ color: '#aaaaaa', fontSize: 12, textAlign: 'center', textDecorationLine: 'underline' }}>
-                  Terms of Service & Privacy Policy
-                </Text>
-              </TouchableOpacity>
+              {/* הקישורים המשפטיים הנפרדים עבור אפל */}
+              <View style={styles.legalLinksContainer}>
+                <TouchableOpacity onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
+                  <Text style={styles.legalLink}>Terms of Use (EULA)</Text>
+                </TouchableOpacity>
+                <Text style={styles.legalDivider}> | </Text>
+                <TouchableOpacity onPress={() => Linking.openURL('https://quirky-match-61c.notion.site/FIXRA-Terms-of-Service-Privacy-Policy-34745f65405f80d2b137c2f4ddd7ae2e')}>
+                  <Text style={styles.legalLink}>Privacy Policy</Text>
+                </TouchableOpacity>
+              </View>
 
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -488,6 +493,10 @@ const styles = StyleSheet.create({
 
   footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 35 },
   bottomFooterText: { color: '#aaaaaa', fontSize: 13, fontWeight: '500' },
+
+  legalLinksContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 10, marginBottom: 15 },
+  legalLink: { color: '#aaaaaa', fontSize: 12, textDecorationLine: 'underline' },
+  legalDivider: { color: '#aaaaaa', fontSize: 12, marginHorizontal: 10 },
 
   checkoutOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end', zIndex: 100 },
   checkoutSheet: { backgroundColor: '#0a0026', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 30, paddingBottom: Platform.OS === 'ios' ? 50 : 30, borderWidth: 1, borderColor: '#333', borderBottomWidth: 0 },
