@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser, useAuth } from '@clerk/clerk-expo'; 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -65,7 +65,7 @@ export default function TermsModal() {
             <ScrollView showsVerticalScrollIndicator={true} style={styles.scrollView}>
               <Text style={styles.termsText}>
                 <Text style={styles.boldText}>1. Acceptance of Terms</Text>{'\n'}
-                By accessing and using FIXRA, you accept and agree to be bound by the terms and provision of this agreement.{'\n\n'}
+                By accessing and using FIXRA, you accept and agree to be bound by the standard Apple Terms of Use (EULA) and our Privacy Policy.{'\n\n'}
                 
                 <Text style={styles.boldText}>2. Use of AI Features</Text>{'\n'}
                 Our AI provides gaming hints and walkthroughs. While we strive for accuracy, FIXRA is not responsible for any progression loss or incorrect game guidance.{'\n\n'}
@@ -73,8 +73,8 @@ export default function TermsModal() {
                 <Text style={styles.boldText}>3. Privacy & Data</Text>{'\n'}
                 We process your chat history and uploaded media solely to provide you with the best gaming solutions. We do not share your personal data with third parties.{'\n\n'}
                 
-                <Text style={styles.boldText}>4. Subscriptions & Payments</Text>{'\n'}
-                Purchases made through FIXRA PRO or specific message packages are billed securely. You can manage your subscription at any time.{'\n\n'}
+                <Text style={styles.boldText}>4. Subscriptions & Standard EULA</Text>{'\n'}
+                Purchases made through FIXRA PRO are billed securely. Our application utilizes the standard Apple End User License Agreement (EULA).{'\n\n'}
                 
                 <Text style={styles.boldText}>5. User Conduct</Text>{'\n'}
                 You agree not to use the service for any unlawful purpose or to upload explicit or harmful content to the AI system.
@@ -83,6 +83,17 @@ export default function TermsModal() {
           </View>
 
           <View style={styles.footer}>
+            
+            <View style={styles.legalLinksContainer}>
+              <TouchableOpacity onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
+                <Text style={styles.legalLink}>Apple Terms of Use (EULA)</Text>
+              </TouchableOpacity>
+              <Text style={styles.legalDivider}> | </Text>
+              <TouchableOpacity onPress={() => Linking.openURL('https://quirky-match-61c.notion.site/FIXRA-Terms-of-Service-Privacy-Policy-34745f65405f80d2b137c2f4ddd7ae2e')}>
+                <Text style={styles.legalLink}>Privacy Policy</Text>
+              </TouchableOpacity>
+            </View>
+
             <TouchableOpacity 
               style={styles.checkboxContainer} 
               activeOpacity={0.8} 
@@ -91,7 +102,7 @@ export default function TermsModal() {
               <View style={[styles.checkbox, isChecked && styles.checkboxActive]}>
                 {isChecked && <Ionicons name="checkmark" size={16} color="#0a0026" />}
               </View>
-              <Text style={styles.checkboxText}>I have read and agree to the Terms of Service & Privacy Policy</Text>
+              <Text style={styles.checkboxText}>I have read and agree to the Apple Standard EULA & Privacy Policy</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -132,6 +143,10 @@ const styles = StyleSheet.create({
 
   footer: { paddingBottom: Platform.OS === 'ios' ? 20 : 10 },
   
+  legalLinksContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+  legalLink: { color: '#00e5ff', fontSize: 12, textDecorationLine: 'underline' },
+  legalDivider: { color: '#aaaaaa', fontSize: 12, marginHorizontal: 8 },
+
   checkboxContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 25, paddingRight: 20 },
   checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: '#00e5ff', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
   checkboxActive: { backgroundColor: '#00e5ff' },
