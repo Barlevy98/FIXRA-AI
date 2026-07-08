@@ -12,7 +12,9 @@ import { PaywallProvider } from './src/context/PaywallContext';
 import TermsModal from './src/components/TermsModal'; 
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
-const REVENUECAT_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_APPLE_KEY || '';
+
+const REVENUECAT_APPLE_KEY = process.env.EXPO_PUBLIC_REVENUECAT_APPLE_KEY || '';
+const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || '';
 
 if (!CLERK_PUBLISHABLE_KEY) {
   throw new Error("Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env");
@@ -23,17 +25,21 @@ export default function App() {
 
   useEffect(() => {
     const setupPurchases = async () => {
-      if (REVENUECAT_API_KEY) {
-        // עוטפים ב-try-catch כדי למנוע קריסה קטלנית אם המפתח שגוי
-        try {
-          await Purchases.configure({ apiKey: REVENUECAT_API_KEY });
-          console.log("🚀 RevenueCat configured successfully");
-        } catch (e) {
-          console.error("Failed to configure RevenueCat:", e);
+      try {
+        // בודקים איזו פלטפורמה רצה ומשתמשים במפתח המתאים
+        if (Platform.OS === 'ios' && REVENUECAT_APPLE_KEY) {
+          await Purchases.configure({ apiKey: REVENUECAT_APPLE_KEY });
+          console.log("🚀 RevenueCat configured successfully for iOS");
+        } else if (Platform.OS === 'android' && REVENUECAT_ANDROID_KEY) {
+          await Purchases.configure({ apiKey: REVENUECAT_ANDROID_KEY });
+          console.log("🚀 RevenueCat configured successfully for Android");
+        } else {
+          console.warn(`⚠️ RevenueCat API Key is missing for platform: ${Platform.OS}`);
         }
-      } else {
-        console.warn("⚠️ RevenueCat API Key is missing in .env");
+      } catch (e) {
+        console.error("Failed to configure RevenueCat:", e);
       }
+      
       // נותנים אור ירוק לאפליקציה להמשיך לעלות רק אחרי שזה הסתיים
       setIsRcReady(true);
     };

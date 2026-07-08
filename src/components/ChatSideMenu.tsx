@@ -98,12 +98,24 @@ export default function ChatSideMenu({
 }
 
 const styles = StyleSheet.create({
-  sideMenu: { position: 'absolute', top: 0, bottom: 0, width: screenWidth * 0.75, backgroundColor: 'rgba(10, 0, 38, 0.95)', zIndex: 100, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)', padding: 20 },
+  sideMenu: { 
+    position: 'absolute', 
+    top: 0, 
+    bottom: 0, 
+    right: 0, // הפתרון לבעיית החיתוך באנדרואיד - עיגון מוחלט לימין
+    width: screenWidth * 0.75, 
+    backgroundColor: 'rgba(10, 0, 38, 0.95)', 
+    zIndex: 100, 
+    borderLeftWidth: 1, 
+    borderLeftColor: 'rgba(255,255,255,0.1)', 
+    paddingHorizontal: 15, // שונה מעט כדי למנוע דחיסה של האייקונים באנדרואיד
+    paddingVertical: 20
+  },
   menuContent: { marginTop: 60, flex: 1 },
   newChatBtn: { padding: 15, borderRadius: 15, alignItems: 'center', marginBottom: 20 },
   newChatBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
-  menuTopActions: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25, paddingHorizontal: 2 },
-  menuActionItem: { alignItems: 'center', width: '25%' },
+  menuTopActions: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25, width: '100%' },
+  menuActionItem: { alignItems: 'center', flex: 1 }, // שונה מ-25% ל-flex: 1 לחלוקה שווה ובטוחה יותר
   menuActionCircle: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   menuActionText: { color: '#aaaaaa', fontSize: 11, fontWeight: '600' },
   menuSectionTitle: { color: '#00e5ff', fontSize: 13, fontWeight: 'bold', marginBottom: 15, textAlign: 'left', letterSpacing: 1 },
