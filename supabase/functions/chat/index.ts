@@ -372,8 +372,6 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
       category: safeString(rawParsed.category) || 'General',
     };
 
-    // 🔴 נמחק בלוק ה- if (aiResponseJSON.isFollowUp) שכפה איפוס של שאילתות החיפוש
-
     let allAvailableLinks: any[] = [];
     
     if (aiResponseJSON.category !== 'Unknown') {
@@ -417,7 +415,8 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
         finalMessageText = `💡 **${aiResponseJSON.quickFixTitle}**`;
     }
 
-    if (userId && supabase) {
+    // התיקון הקריטי: מוודאים שחיוב הקרדיט מתבצע רק כשיש טקסט ממשי מהמשתמש או מדיה מצורפת
+    if (userId && supabase && ((userText && userText.trim().length > 0) || hasMedia)) {
       const { data: isAllowed, error: rpcError } = await supabase.rpc('consume_chat_allowance', { 
         p_user_id: userId, 
         p_max_messages: limit,
