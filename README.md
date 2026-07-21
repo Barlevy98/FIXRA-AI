@@ -2,22 +2,9 @@
 
 [![Download on the App Store](https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83&releaseDate=1314835200)](https://apps.apple.com/il/app/fixra-ai/id6769673654)
 
-<img width="200" src="./docs/image1.png" />
+<img width="200" src="./docs/image1.png" /><img width="200" src="./docs/image2.png" /><img width="200" src="./docs/image3.png" /><img width="200" src="./docs/image4.png" />
 
-<img width="200" src="./docs/image2.png" />
-
-<img width="200" src="./docs/image3.png" />
-
-<img width="200" src="./docs/image4.png" />
-
-<img width="200" src="./docs/image5.png" />
-
-<img width="200" src="./docs/image6.png" />
-
-<img width="200" src="./docs/image7.png" />
-
-<img width="200" src="./docs/image8.png" />
-
+<img width="200" src="./docs/image5.png" /><img width="200" src="./docs/image6.png" /><img width="200" src="./docs/image7.png" /><img width="200" src="./docs/image8.png" />
 
 Your personal AI gaming coach, powered by cutting-edge artificial intelligence to help you master your favorite games.
 
