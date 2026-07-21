@@ -2,19 +2,21 @@
 
 [![Download on the App Store](https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83&releaseDate=1314835200)](https://apps.apple.com/il/app/fixra-ai/id6769673654)
 
-<img width="200"  alt="Image" src="https://github.com/user-attachments/assets/f0f92900-8cfc-4e82-9f15-95385a47dfe8" />
+<img width="200" src="./docs/image1.png" />
 
-<img width="200" alt="Image" src="https://github.com/user-attachments/assets/d4b985df-1239-4ae8-adea-3ae968443420" />
+<img width="200" src="./docs/image2.png" />
 
-<img width="200"  alt="Image" src="https://github.com/user-attachments/assets/5beab9fc-e54f-4876-98f5-36dfa5d54850" />
+<img width="200" src="./docs/image3.png" />
 
-<img width="200"  alt="Image" src="https://github.com/user-attachments/assets/b6fa5118-da63-467c-97ff-3b1deb9f4b19" />
+<img width="200" src="./docs/image4.png" />
 
-<img width="200"  alt="Image" src="https://github.com/user-attachments/assets/aac42c04-7a92-44ad-a248-014bda5f0597" />
+<img width="200" src="./docs/image5.png" />
 
-<img width="200"  alt="Image" src="https://github.com/user-attachments/assets/bcc63fc7-62f4-494a-b5e4-568e80936b05" />
+<img width="200" src="./docs/image6.png" />
 
-<img width="200"  alt="Image" src="https://github.com/user-attachments/assets/8ec91055-e080-4fca-965f-ff5fbe1a2ab3" />
+<img width="200" src="./docs/image7.png" />
+
+<img width="200" src="./docs/image8.png" />
 
 
 Your personal AI gaming coach, powered by cutting-edge artificial intelligence to help you master your favorite games.
