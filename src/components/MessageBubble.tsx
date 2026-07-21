@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
   userBubble: { borderBottomRightRadius: 5 },
   botBubble: { backgroundColor: 'rgba(255,255,255,0.05)', borderBottomLeftRadius: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   
-  messageText: { color: '#ffffff', fontSize: 16, marginTop: 5, textAlign: 'left', lineHeight: 22 },
+  messageText: { color: '#ffffff', fontSize: 16, marginTop: 5, textAlign: 'auto', lineHeight: 22 },
   messageImage: { width: 220, height: 160, borderRadius: 10, resizeMode: 'cover' },
   messageMediaWrapper: { width: 220, height: 160, borderRadius: 10, overflow: 'hidden', position: 'relative', marginBottom: 10 },
   playIconOverlayMessage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },

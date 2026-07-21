@@ -3,6 +3,16 @@ import { createClient } from "npm:@supabase/supabase-js"
 
 Deno.serve(async (req) => {
   try {
+    // 🛡️ חסימת אבטחה: אימות חתימה מ-RevenueCat 🛡️
+    const authHeader = req.headers.get('Authorization');
+    const RC_WEBHOOK_SECRET = Deno.env.get('RC_WEBHOOK_SECRET');
+
+    // בודקים אם חסרה סיסמה או אם הסיסמה לא תואמת (מצפים לפורמט: Bearer YOUR_SECRET)
+    if (!RC_WEBHOOK_SECRET || authHeader !== `Bearer ${RC_WEBHOOK_SECRET}`) {
+      console.warn("🚨 Unauthorized Webhook Attempt Blocked!");
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+
     const payload = await req.json();
     const event = payload.event;
 

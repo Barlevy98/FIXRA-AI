@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   attachButton: { paddingBottom: Platform.OS === 'ios' ? 7 : 10 },
   attachButtonText: { color: '#aaaaaa', fontSize: 30, fontWeight: '300' },
   sendButton: { paddingBottom: 0 },
-  input: { color: '#ffffff', fontSize: 16, maxHeight: 180, textAlign: 'left', paddingTop: Platform.OS === 'ios' ? 15 : 12, paddingBottom: Platform.OS === 'ios' ? 15 : 12 },
+  input: { color: '#ffffff', fontSize: 16, maxHeight: 180, textAlign: 'auto', paddingTop: Platform.OS === 'ios' ? 15 : 12, paddingBottom: Platform.OS === 'ios' ? 15 : 12 },
   fieldPreviewContainer: { position: 'absolute', top: 10, right: 0, zIndex: 10, backgroundColor: '#1e1e1e', borderRadius: 10, padding: 2 },
   fieldPreviewImage: { width: 80, height: PREVIEW_HEIGHT, borderRadius: 10, borderWidth: 1, borderColor: '#333' },
   playIconOverlayInput: { position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 8 },

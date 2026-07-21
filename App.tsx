@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, I18nManager } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ClerkProvider, SignedIn, SignedOut } from '@clerk/clerk-expo';
@@ -12,6 +12,10 @@ import { PaywallProvider } from './src/context/PaywallContext';
 import TermsModal from './src/components/TermsModal'; 
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
+
+// ביטול אוטומטי של היפוך מסך למכשירים בעברית/ערבית כדי לשמור על עיצוב אוניברסלי
+I18nManager.allowRTL(false);
+I18nManager.forceRTL(false);
 
 const REVENUECAT_APPLE_KEY = process.env.EXPO_PUBLIC_REVENUECAT_APPLE_KEY || '';
 const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || '';
