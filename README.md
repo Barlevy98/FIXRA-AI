@@ -4,7 +4,7 @@
 
 <img width="200" src="./docs/image1.png" /><img width="200" src="./docs/image4.png" /><img width="200" src="./docs/image6.png" /><img width="200" src="./docs/image5.png" />
 
-<img width="200" src="./docs/image4.png" /><img width="200" src="./docs/image2.png" /><img width="200" src="./docs/image3.png" /><img width="200" src="./docs/image8.png" />
+<img width="200" src="./docs/image2.png" /><img width="200" src="./docs/image7.png" /><img width="200" src="./docs/image8.png" /><img width="200" src="./docs/image3.png" />
 
 Your personal AI gaming coach, powered by cutting-edge artificial intelligence to help you master your favorite games.
 
