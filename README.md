@@ -35,7 +35,7 @@ Your personal AI gaming coach, powered by cutting-edge artificial intelligence t
 
 ### Technical Challenges & Solutions
 
-- **Complex Authentication & Database Flow:** Implemented secure user authentication using **Clerk** seamlessly integrated with a **Supabase** backend, utilizing Edge Functions for webhook processing[cite: 3].
+- **Complex Authentication & Database Flow:** Implemented secure user authentication using **Clerk** seamlessly integrated with a **Supabase** backend, utilizing Edge Functions for webhook processing.
 - **AI Integration:** Leveraged **Google Generative AI** to analyze gameplay screenshots and video clips in real-time, providing personalized gaming tips.
 - **Monetization Architecture:** Built a robust in-app purchase system with **RevenueCat**, handling subscription states and paywall gating efficiently.
 - **Testing & Quality Assurance:** Developed comprehensive unit and component tests using **Jest** and **React Native Testing Library** to ensure high reliability across critical app flows.
