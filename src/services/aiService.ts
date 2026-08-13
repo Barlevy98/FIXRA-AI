@@ -17,7 +17,8 @@ export async function fetchGameWalkthrough(
   userPlan: string = 'Free',
   gameCategory: string = 'General',
   signal?: AbortSignal,
-  userId?: string
+  userId?: string,
+  userName?: string
 ): Promise<{ message: string; walkthroughData?: any; category: string; isError?: boolean; errorType?: 'fatal' | 'retryable' | 'abort' | 'rate_limit' }> {
   
   if (Date.now() < circuitOpenUntil) {
@@ -27,7 +28,9 @@ export async function fetchGameWalkthrough(
 
   try {
     const timeoutController = new AbortController();
-    const timeoutId = setTimeout(() => timeoutController.abort(), 20000);
+    // 🌟 התיקון הקריטי: אם זה וידאו נותנים 45 שניות, אחרת 20 שניות 🌟
+    const timeoutDuration = (media?.type === 'video') ? 45000 : 20000;
+    const timeoutId = setTimeout(() => timeoutController.abort(), timeoutDuration);
     
     const combinedSignal = signal ? 
       (signal.aborted ? signal : (signal.addEventListener('abort', () => timeoutController.abort()), timeoutController.signal)) 
@@ -46,7 +49,8 @@ export async function fetchGameWalkthrough(
         previousMessages,
         userPlan,
         gameCategory,
-        userId
+        userId,
+        userName // 🌟 מעבירים את השם לענן 🌟
       }),
       signal: combinedSignal
     });

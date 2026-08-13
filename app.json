@@ -2,7 +2,7 @@
   "expo": {
     "name": "FIXRA AI",
     "slug": "fixra-ai",
-    "version": "1.0.0",
+    "version": "1.1",
     "scheme": "fixra",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

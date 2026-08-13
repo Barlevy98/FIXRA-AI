@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
   const reqStartTime = Date.now();
 
   try {
-    const { userText, media, language, previousMessages, userPlan, gameCategory, userId } = await req.json()
+    const { userText, media, language, previousMessages, userPlan, gameCategory, userId, userName } = await req.json()
 
     // --- 🛡️ 1. ABUSE PROTECTION 🛡️ ---
     const MAX_TEXT_LENGTH = 1500;
@@ -252,7 +252,7 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
 6. 🎯 LINKS ON FOLLOW-UPS: If 'isFollowUp' is true, DO NOT generate any search queries (leave youtubeQuery, wikiQuery etc. empty) UNLESS the user explicitly asks for a video, link, or guide. If they explicitly ask for "another video", you MUST generate a NEW, DIFFERENT 'youtubeQuery' to ensure they get a different result than before.`;
 
     if (isActuallyPremium) {
-      systemInstruction += `\n7. 💎 PREMIUM MICRO-CONTEXT PROTOCOL: You are analyzing a Premium user's gameplay. Detect not only the mission, but the CURRENT EXACT MOMENT.
+      systemInstruction += `\n7. 💎 PREMIUM MICRO-CONTEXT PROTOCOL: You are an ELITE Personal AI Assistant. The gamer you are helping is named ${userName || 'Gamer'}. Address them directly by their name occasionally to give a personal VIP touch. Detect not only the mission, but the CURRENT EXACT MOMENT.
    If possible, based on the user's text or uploaded media, you MUST identify the specific Boss Phase, current attack pattern, or exact mistake the player is making.`;
     }
 
@@ -268,10 +268,6 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
       
     const finalUserQuery = `${activeGameContext}User query: ${userText || 'Analyze this.'}`;
 
-    // =========================================================================
-    // 🌟 AI CACHE CHECK (ההגנה החדשה מפני שריפת מכסות!) 🌟
-    // בודק מטמון רק אם זו ההודעה הראשונה בשיחה (אין היסטוריה) ואין תמונה מצורפת.
-    // =========================================================================
     const canCacheAI = !hasMedia && history.length === 0 && userText && userText.trim().length > 3;
     const aiCacheKey = `ai_ans:${gameCategory}:${userText?.trim().substring(0, 100)}`;
     let isFromCache = false;
@@ -288,13 +284,11 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
         console.warn("AI Cache check failed", e);
       }
     }
-    // =========================================================================
 
     let attemptCount = 0;
     const MAX_RETRIES = 2;
     let lastError = null;
 
-    // 🌟 המעגל ירוץ *רק* אם התשובה לא נמצאה בזיכרון המטמון 🌟
     while (attemptCount < MAX_RETRIES && !rawParsed) {
       attemptCount++;
       let responseText = "";
@@ -322,18 +316,20 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
           responseText = result.response.text();
 
         } else {
+           const groqModel = isActuallyPremium ? "llama-3.3-70b-versatile" : "llama3-8b-8192";
+           providerUsed = isActuallyPremium ? "Groq (Premium VIP)" : (isActuallyPro ? "Groq (Pro Speed)" : "Groq (Free)");
+           
            const groqMessages = [{ role: "system", content: systemInstruction }, ...history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text })), { role: "user", content: finalUserQuery }];
            const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
               method: "POST",
               headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: groqMessages, response_format: { type: "json_object" }, temperature: 0.2 }),
+              body: JSON.stringify({ model: groqModel, messages: groqMessages, response_format: { type: "json_object" }, temperature: 0.2 }),
               signal: AbortSignal.timeout(8000) 
            });
 
            if (!groqRes.ok) throw new Error(`Groq Status: ${groqRes.status}`);
            const groqData = await groqRes.json();
            responseText = groqData.choices[0].message.content;
-           providerUsed = isActuallyPro ? "Groq (Pro Speed)" : "Groq (Free)";
         }
 
         rawParsed = safeParseJSON(responseText);
@@ -343,7 +339,6 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
             rawParsed.wikiQuery = "";
             rawParsed.category = "Unknown";
         } else if (canCacheAI) {
-            // 🌟 שומר את התשובה לזיכרון המטמון כדי שהמשתמש הבא לא יבזבז API 🌟
             await getCachedOrFetch(supabase, aiCacheKey, async () => rawParsed);
         }
 
@@ -415,24 +410,24 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
         finalMessageText = `💡 **${aiResponseJSON.quickFixTitle}**`;
     }
 
-    // התיקון הקריטי: מוודאים שחיוב הקרדיט מתבצע רק כשיש טקסט ממשי מהמשתמש או מדיה מצורפת
-    if (userId && supabase && ((userText && userText.trim().length > 0) || hasMedia)) {
-      const { data: isAllowed, error: rpcError } = await supabase.rpc('consume_chat_allowance', { 
-        p_user_id: userId, 
-        p_max_messages: limit,
-        p_cycle_ms: cycleMs,
-        p_is_total_limit: isTotalLimit
-      });
+// התיקון הקריטי: מוודאים שחיוב הקרדיט מתבצע רק כשיש טקסט ממשי מהמשתמש או מדיה מצורפת
+if (userId && supabase && ((userText && userText.trim().length > 0) || hasMedia)) {
+  const { data: isAllowed, error: rpcError } = await supabase.rpc('consume_chat_allowance', { 
+    p_user_id: userId, 
+    p_max_messages: limit,
+    p_cycle_ms: cycleMs,
+    p_is_total_limit: isTotalLimit
+  });
 
-      if (!isAllowed || rpcError) {
-         return new Response(JSON.stringify({
-            isError: true,
-            errorType: "rate_limit", 
-            message: "מכסת ההודעות שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל פתרונות חינם, או שדרג לפרימיום!",
-            category: gameCategory || 'General'
-         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-    }
+  if (!isAllowed || rpcError) {
+     return new Response(JSON.stringify({
+        isError: true,
+        errorType: "rate_limit", 
+        message: "מכסת ההודעות שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל פתרונות חינם, או שדרג לפרימיום!",
+        category: gameCategory || 'General'
+     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+}
 
     const latency = Date.now() - reqStartTime;
     console.log(`[SUCCESS] User: ${userId || 'Anon'} | Provider: ${providerUsed} | Latency: ${latency}ms`);

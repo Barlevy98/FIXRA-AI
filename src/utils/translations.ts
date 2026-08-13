@@ -7,6 +7,8 @@ export const TRANSLATIONS = {
     attachTitle: "Attach File", attachSubtitle: "Where would you like to upload from?", camera: "Camera ", gallery: "Gallery ",
     
     aiError: "Sorry, I encountered an error. Don't worry, your credit was not used. Please try again.",
+    rateLimitChatError: "Message limit reached 🛑. Invite 5 friends to get free solutions, or upgrade to Premium!", // 🌟 הוספנו כאן!
+    
     profileBack: "Back", profileStatus: "Account Status", profilePro: "Active PRO Subscription", profileLeft: "Messages left in bank", profileStore: "Store & Upgrades", profileLogout: "Sign Out", profileFreePlan: "Free Tier", profileSettings: "Settings", profileLang: "Language",
     disclaimer: "FIXRA is an AI and can make mistakes.",
 
@@ -18,7 +20,6 @@ export const TRANSLATIONS = {
     limitBannerText: "Limit reached ⏳",
     limitAlertTitle: "Out of Solves ⏳",
     
-    // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
     lockedPlaceholder: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly') || p.includes('onetime')) return "Message limit reached ⏳ (Tap to unlock)";
@@ -45,6 +46,8 @@ export const TRANSLATIONS = {
     attachTitle: "הוספת קובץ", attachSubtitle: "מאיפה תרצה להעלות?", camera: "מצלמה ", gallery: "גלריה ",
     
     aiError: "מצטער, נתקלתי בשגיאה ברשת. אל דאגה, לא ירד לך קרדיט מהחשבון. אנא נסה שוב.",
+    rateLimitChatError: "מכסת ההודעות שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל פתרונות חינם, או שדרג לפרימיום!", // 🌟 הוספנו כאן!
+
     profileBack: "חזור לצ'אט", profileStatus: "סטטוס החשבון", profilePro: "מנוי PRO פעיל", profileLeft: "הודעות שנותרו בבנק", profileStore: "חנות ושדרוגים", profileLogout: "התנתק מהחשבון", profileFreePlan: "מסלול חינמי", profileSettings: "הגדרות", profileLang: "שפת הממשק",
     disclaimer: "FIXRA מבוסס על בינה מלאכותית ועלול לטעות.",
 
@@ -56,7 +59,6 @@ export const TRANSLATIONS = {
     limitBannerText: "הגעת למגבלת ההודעות ⏳",
     limitAlertTitle: "נגמרו ההודעות ⏳",
     
-    // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
     lockedPlaceholder: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly') || p.includes('onetime')) return "מכסת ההודעות הסתיימה ⏳ (לחץ לשדרוג)";
@@ -83,6 +85,8 @@ export const TRANSLATIONS = {
     attachTitle: "Прикрепить файл", attachSubtitle: "Откуда вы хотите загрузить?", camera: "Камера ", gallery: "Галерея ",
     
     aiError: "Извините, произошла ошибка. Не волнуйтесь, ваш кредит не был списан. Пожалуйста, попробуйте еще раз.",
+    rateLimitChatError: "Лимит сообщений исчерпан 🛑. Пригласите 5 друзей, чтобы получить бесплатные решения, или перейдите на Premium!", // 🌟 הוספנו כאן!
+
     profileBack: "Назад", profileStatus: "Статус аккаунта", profilePro: "Активная PRO подписка", profileLeft: "Осталось сообщений", profileStore: "Магазин и улучшения", profileLogout: "Выйти", profileFreePlan: "Бесплатный тариф", profileSettings: "Настройки", profileLang: "Язык",
     disclaimer: "FIXRA работает на базе ИИ и может допускать ошибки.",
 
@@ -94,7 +98,6 @@ export const TRANSLATIONS = {
     limitBannerText: "Лимит исчерпан ⏳",
     limitAlertTitle: "Лимит исчерпан ⏳",
     
-    // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
     lockedPlaceholder: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly') || p.includes('onetime')) return "Лимит сообщений исчерпан ⏳ (Нажмите)";
@@ -121,6 +124,8 @@ export const TRANSLATIONS = {
     attachTitle: "إرفاق ملف", attachSubtitle: "من أين تريد الرفع؟", camera: "كاميرا ", gallery: "معرض الصور ",
     
     aiError: "عذراً، حدث خطأ. لا تقلق، لم يتم خصم أي رصيد منك. يرجى المحاولة مرة أخرى.",
+    rateLimitChatError: "لقد وصلت إلى حد الرسائل 🛑. قم بدعوة 5 أصدقاء للحصول على حلول مجانية، أو قم بالترقية إلى Premium!", // 🌟 הוספנו כאן!
+
     profileBack: "رجوع", profileStatus: "حالة الحساب", profilePro: "اشتراك PRO نشط", profileLeft: "الرسائل المتبقية", profileStore: "المتجر والترقيات", profileLogout: "تسجيل خروج", profileFreePlan: "الباقة المجانية", profileSettings: "الإعدادات", profileLang: "اللغة",
     disclaimer: "يعتمد FIXRA على الذكاء الاصطناعي وقد يرتكب أخطاء.",
 
@@ -132,7 +137,6 @@ export const TRANSLATIONS = {
     limitBannerText: "تم الوصول للحد ⏳",
     limitAlertTitle: "نفدت الرسائل ⏳",
     
-    // 🌟 התיקון: בדיקה חסינה לאותיות גדולות וקטנות 🌟
     lockedPlaceholder: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly') || p.includes('onetime')) return "انتهى رصيد الرسائل ⏳ (اضغط للترقية)";

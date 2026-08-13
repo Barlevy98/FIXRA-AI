@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { MessageType, ChatSession } from '../src/types';
 import { fetchGameWalkthrough } from '../src/services/aiService';
 import { saveChatSession, getUserChatSessions, deleteChatSession } from '../src/utils/db';
-import { usePaywall } from '../src/context/PaywallContext'; // 🌟 משכנו את הקונטקסט כדי לעדכן UI!
+import { usePaywall } from '../src/context/PaywallContext'; 
 
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -41,7 +41,7 @@ export function useChatManager(
   t: any,
   greetingText: string
 ) {
-  const { incrementLocalCounter } = usePaywall(); // 🌟 הפונקציה שתקפיץ את ה-UI באותה שניה
+  const { incrementLocalCounter } = usePaywall(); 
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -66,7 +66,7 @@ export function useChatManager(
   }, []);
 
   const SESSIONS_KEY = `@fixra_sessions_${user?.id || 'guest'}`;
-  const saveTimeout = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const saveSessionsToStorage = (updatedSessions: ChatSession[]) => {
     setSessions(updatedSessions);
@@ -270,11 +270,12 @@ export function useChatManager(
 
       let response: any;
       
+      const userName = user?.firstName || user?.fullName || undefined;
+
       for (let i = 0; i < 3; i++) {
         if (currentSignal.aborted) throw new Error("AbortError");
         
-        // 🌟🌟🌟 התיקון הקריטי! הוספנו את ה-user?.id בסוף הפונקציה כדי שהשרת יוכל לחייב!! 🌟🌟🌟
-        response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, updatedMsgs, currentPlan, categoryToPass, currentSignal, user?.id);
+        response = await fetchGameWalkthrough(userText, currentMedia, chatLanguage, updatedMsgs, currentPlan, categoryToPass, currentSignal, user?.id, userName);
         
         if (!response.isError) break; 
         
@@ -290,8 +291,22 @@ export function useChatManager(
 
       if (currentSignal.aborted || currentRequestId !== requestCounterRef.current) return false;
       
+      // 🌟 הנה הבלוק המעודכן שמושך את הטקסט מקובץ התרגומים! 🌟
       if (!response || response.isError) {
-        const finalMsgs = msgsWithLoading.map(msg => msg.id === loadingId ? { id: loadingId, text: response?.message || "An error occurred. Please try again.", sender: 'bot' as const, isError: true } : msg);
+        let errorMessage = response?.message || "An error occurred. Please try again.";
+        
+        // מושכים את התרגום אם השגיאה היא rate_limit
+        if (response?.errorType === 'rate_limit') {
+          errorMessage = t.rateLimitChatError || "Message limit reached 🛑. Invite 5 friends to get free solutions, or upgrade to Premium!";
+        }
+
+        const finalMsgs = msgsWithLoading.map(msg => msg.id === loadingId ? { 
+          id: loadingId, 
+          text: errorMessage, 
+          sender: 'bot' as const, 
+          isError: true 
+        } : msg);
+        
         updateCurrentSession(finalMsgs, response?.category || categoryToPass);
         return false;
       }
@@ -299,7 +314,6 @@ export function useChatManager(
       const finalMsgs = msgsWithLoading.map(msg => msg.id === loadingId ? { id: loadingId, text: response.message, walkthroughData: response.walkthroughData, sender: 'bot' as const } : msg);
       updateCurrentSession(finalMsgs, response.category);
       
-      // 🌟 הפונקציה שמקפיצה את ה-UI באפליקציה באותו רגע 🌟
       incrementLocalCounter();
       
       return true;

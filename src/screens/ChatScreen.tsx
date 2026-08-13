@@ -96,10 +96,8 @@ export default function ChatScreen() {
   const slideAnim = useRef(new Animated.Value(screenWidth)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // 🌟 הפונקציה החדשה שמושכת את השם מ-Clerk וזורקת אותו ל-Supabase 🌟
   useEffect(() => {
     const syncName = async () => {
-      // מוודא שיש למשתמש שם ושזה לא ריק
       if (user?.id && user?.fullName) {
         try {
           const token = await getToken({ template: 'supabase' });
@@ -135,7 +133,7 @@ export default function ChatScreen() {
   }, [user?.id]);
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
+    let intervalId: ReturnType<typeof setInterval>;
     const checkFlow = async () => {
       if (user?.id && !hasCheckedTutorial) {
         try {
