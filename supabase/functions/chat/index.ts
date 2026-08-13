@@ -24,10 +24,8 @@ interface AIResponseJSON {
 
 const safeString = (val: any) => typeof val === 'string' ? val : '';
 
-// 🌟 L1 Cache (Memory) 🌟
 const memCache = new Map<string, any>();
 
-// 🌟 L2 Cache (Supabase DB) 🌟
 async function getCachedOrFetch(supabase: any, cacheKey: string, fetchFn: () => Promise<any>) {
   if (memCache.has(cacheKey)) return memCache.get(cacheKey);
 
@@ -38,7 +36,7 @@ async function getCachedOrFetch(supabase: any, cacheKey: string, fetchFn: () => 
         memCache.set(cacheKey, data.result_data);
         return data.result_data;
       }
-    } catch(e) { /* ignore db error */ }
+    } catch(e) { }
   }
 
   const freshData = await fetchFn();
@@ -46,13 +44,13 @@ async function getCachedOrFetch(supabase: any, cacheKey: string, fetchFn: () => 
     memCache.set(cacheKey, freshData);
     if (memCache.size > 500) memCache.clear(); 
     if (supabase) {
-      supabase.from('search_cache').upsert({ query_key: cacheKey, result_data: freshData, created_at: Date.now() }).then();
+      // 🌟 התיקון הקריטי: הוספנו await כדי שהשמירה לא תיהרג על ידי השרת!
+      await supabase.from('search_cache').upsert({ query_key: cacheKey, result_data: freshData, created_at: Date.now() });
     }
   }
   return freshData;
 }
 
-// 🌟 OPTIMIZATION: Singleton Supabase Client (Service Role for Admin Access) 🌟
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 let supabaseSingleton: any = null;
@@ -80,7 +78,6 @@ Deno.serve(async (req) => {
   try {
     const { userText, media, language, previousMessages, userPlan, gameCategory, userId, userName } = await req.json()
 
-    // --- 🛡️ 1. ABUSE PROTECTION 🛡️ ---
     const MAX_TEXT_LENGTH = 1500;
     const MAX_MEDIA_ITEMS = 3;
     const MAX_TOTAL_BASE64_CHARS = 14000000;
@@ -235,15 +232,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    let systemInstruction = adminSettings?.system_prompt || `You are an ELITE gaming AI assistant and video analysis expert.
+    l// מגדירים את הודעת הדחייה לפי השפה, כשאנגלית היא ברירת המחדל המוחלטת
+    const rejectionMessage = language === 'Hebrew' ? "אני עוזר AI שמתמחה במשחקי וידאו בלבד 🎮." :
+    language === 'Russian' ? "Я ИИ-помощник, специализирующийся только на видеоиграх 🎮." :
+    language === 'Arabic' ? "أنا مساعد ذكاء اصطناعي متخصص في ألعاب الفيديو فقط 🎮." :
+    "I am an AI assistant specializing in video games only 🎮.";
+
+let systemInstruction = adminSettings?.system_prompt || `You are an ELITE gaming AI assistant and video analysis expert.
 CRITICAL JSON RULES: Output ONLY valid raw JSON. No markdown.
 ANTI-HALLUCINATION & ELITE GAMER LOGIC:
 0. YOU ARE A GAMING ASSISTANT ONLY. If the user asks about ANYTHING outside of video games, you MUST reject it.
-   To reject, return exactly this JSON:
-   {
-     "message": "אני עוזר AI שמתמחה במשחקי וידאו בלבד 🎮.",
-     "category": "Unknown"
-   }
+To reject, return exactly this JSON:
+{
+"message": "${rejectionMessage}",
+"category": "Unknown"
+}
 1. 'quickFixTitle' MUST be the exact mission/boss.
 2. 'taskSummary' MUST be a highly specific actionable gameplay tip.
 3. NEVER return both 'message' and 'taskSummary'. One MUST be empty.
@@ -256,7 +259,7 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
    If possible, based on the user's text or uploaded media, you MUST identify the specific Boss Phase, current attack pattern, or exact mistake the player is making.`;
     }
 
-    systemInstruction += `\nCRITICAL LANGUAGE RULES:\n- 'quickFixTitle', 'message', and 'taskSummary' MUST BE IN: ${language || 'Hebrew'}.\n- Search queries ('youtubeQuery', etc.) MUST STRICTLY BE IN PURE ENGLISH AND ALWAYS BE GENERATED.\n\nJSON RESPONSE FORMAT:\n{\n  "confidence": 0,\n  "isFollowUp": false,\n  "quickFixTitle": "...",\n  "message": "...",\n  "taskSummary": "...",\n  "youtubeQuery": "...", \n  "wikiQuery": "...",\n  "ignQuery": "...",\n  "polygonQuery": "...",\n  "mapgenieQuery": "...",\n  "fextralifeQuery": "...",\n  "category": "The official Game Name (or 'Unknown')"\n}`;
+    systemInstruction += `\nCRITICAL LANGUAGE RULES:\n- 'quickFixTitle', 'message', and 'taskSummary' MUST BE IN: ${language || 'English'}.\n- Search queries ('youtubeQuery', etc.) MUST STRICTLY BE IN PURE ENGLISH AND ALWAYS BE GENERATED.\n\nJSON RESPONSE FORMAT:\n{\n  "confidence": 0,\n  "isFollowUp": false,\n  "quickFixTitle": "...",\n  "message": "...",\n  "taskSummary": "...",\n  "youtubeQuery": "...", \n  "wikiQuery": "...",\n  "ignQuery": "...",\n  "polygonQuery": "...",\n  "mapgenieQuery": "...",\n  "fextralifeQuery": "...",\n  "category": "The official Game Name (or 'Unknown')"\n}`;
 
     let history = (previousMessages || []).filter((msg: any) => msg.text && !msg.isLoading).slice(-6);
     let rawParsed: any = null;
@@ -270,14 +273,12 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
 
     const canCacheAI = !hasMedia && history.length === 0 && userText && userText.trim().length > 3;
     const aiCacheKey = `ai_ans:${gameCategory}:${userText?.trim().substring(0, 100)}`;
-    let isFromCache = false;
 
     if (canCacheAI) {
       try {
         const cachedRawParsed = await getCachedOrFetch(supabase, aiCacheKey, async () => null);
         if (cachedRawParsed && cachedRawParsed.message) {
           rawParsed = cachedRawParsed;
-          isFromCache = true;
           providerUsed = "Supabase DB Cache (Zero API Cost 🚀)";
         }
       } catch (e) {
@@ -316,7 +317,8 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
           responseText = result.response.text();
 
         } else {
-           const groqModel = isActuallyPremium ? "llama-3.3-70b-versatile" : "llama3-8b-8192";
+           // 🌟 התיקון למודל הפעיל של Groq
+           const groqModel = isActuallyPremium ? "llama-3.3-70b-versatile" : "llama-3.1-8b-instant";
            providerUsed = isActuallyPremium ? "Groq (Premium VIP)" : (isActuallyPro ? "Groq (Pro Speed)" : "Groq (Free)");
            
            const groqMessages = [{ role: "system", content: systemInstruction }, ...history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text })), { role: "user", content: finalUserQuery }];
@@ -395,8 +397,18 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
       if (aiResponseJSON.fextralifeQuery) allAvailableLinks.push({ type: 'fextralife', data: { title: "⚔️ Fextralife Boss Guide", url: `https://www.google.com/search?q=${encodeURIComponent('site:fextralife.com ' + aiResponseJSON.fextralifeQuery)}&udm=14`, thumbnail: "https://fextralife.com/wp-content/uploads/2021/05/fextralife-logo-150x150.png" } });
     }
 
+    // 🌟 התיקון השני: סינון קפדני ליוטיוב בלבד עבור משתמשים חינמיים!
     let allowedLinksCount = serverValidatedPlan === 'PREMIUM' ? 10 : (serverValidatedPlan?.startsWith('PRO') ? 3 : 1);
-    const finalLinks = allAvailableLinks.slice(0, allowedLinksCount);
+    let finalLinks: any[] = [];
+
+    if (allowedLinksCount === 1) {
+      const ytLink = allAvailableLinks.find(link => link.type === 'youtube');
+      if (ytLink) {
+        finalLinks.push(ytLink);
+      }
+    } else {
+      finalLinks = allAvailableLinks.slice(0, allowedLinksCount);
+    }
 
     let walkthroughData: any = {};
     finalLinks.forEach(link => { walkthroughData[link.type] = link.data; });
@@ -410,24 +422,23 @@ ANTI-HALLUCINATION & ELITE GAMER LOGIC:
         finalMessageText = `💡 **${aiResponseJSON.quickFixTitle}**`;
     }
 
-// התיקון הקריטי: מוודאים שחיוב הקרדיט מתבצע רק כשיש טקסט ממשי מהמשתמש או מדיה מצורפת
-if (userId && supabase && ((userText && userText.trim().length > 0) || hasMedia)) {
-  const { data: isAllowed, error: rpcError } = await supabase.rpc('consume_chat_allowance', { 
-    p_user_id: userId, 
-    p_max_messages: limit,
-    p_cycle_ms: cycleMs,
-    p_is_total_limit: isTotalLimit
-  });
+    if (userId && supabase && ((userText && userText.trim().length > 0) || hasMedia)) {
+      const { data: isAllowed, error: rpcError } = await supabase.rpc('consume_chat_allowance', { 
+        p_user_id: userId, 
+        p_max_messages: limit,
+        p_cycle_ms: cycleMs,
+        p_is_total_limit: isTotalLimit
+      });
 
-  if (!isAllowed || rpcError) {
-     return new Response(JSON.stringify({
-        isError: true,
-        errorType: "rate_limit", 
-        message: "מכסת ההודעות שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל פתרונות חינם, או שדרג לפרימיום!",
-        category: gameCategory || 'General'
-     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-}
+      if (!isAllowed || rpcError) {
+         return new Response(JSON.stringify({
+            isError: true,
+            errorType: "rate_limit", 
+            message: "מכסת ההודעות שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל פתרונות חינם, או שדרג לפרימיום!",
+            category: gameCategory || 'General'
+         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
 
     const latency = Date.now() - reqStartTime;
     console.log(`[SUCCESS] User: ${userId || 'Anon'} | Provider: ${providerUsed} | Latency: ${latency}ms`);
