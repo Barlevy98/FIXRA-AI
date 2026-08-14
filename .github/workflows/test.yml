@@ -1,0 +1,34 @@
+name: CI - Run Tests
+
+# מתי התהליך הזה ירוץ?
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run Jest Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. הורדת הקוד מהמאגר לשרת של גיטהאב
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      # 2. התקנת Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      # 3. התקנת כל החבילות והספריות של הפרויקט
+      - name: Install Dependencies
+        run: npm install
+        
+      # 4. הרצת הטסטים!
+      - name: Run Tests
+        run: npm test
