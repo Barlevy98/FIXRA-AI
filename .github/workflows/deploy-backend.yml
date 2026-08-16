@@ -1,0 +1,25 @@
+name: Deploy Backend (Supabase)
+
+# מילת הקסם שיוצרת את כפתור ההפעלה הידני בממשק
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Edge Functions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # הרצת הדיפלוי תוך שימוש בסודות שהגדרנו
+      - name: Deploy Functions
+        run: supabase functions deploy
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
