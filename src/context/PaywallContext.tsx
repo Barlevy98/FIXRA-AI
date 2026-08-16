@@ -25,6 +25,8 @@ type PaywallContextType = {
   incrementLocalCounter: () => void;
   isFallbackMode: boolean;
   fallbackUsedMessages: number;
+  // 🌟 הפונקציה החדשה שלנו שתעניק את ההודעה לאחר צפייה בפרסומת
+  grantRewardMessage: () => Promise<void>; 
 };
 
 const PaywallContext = createContext<PaywallContextType | undefined>(undefined);
@@ -54,7 +56,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       if (savedLang) setChatLanguage(savedLang);
     });
     
-    // הפונקציה החדשה שעוטפת את הלוגין ב-try-catch
     const initRevenueCatLogin = async () => {
       if (user?.id) {
         try {
@@ -62,7 +63,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
           loadUserData();
         } catch (error) {
           console.error("Error logging into RevenueCat:", error);
-          // במקרה של שגיאה (כדי שלא יקרוס), עדיין נטען את נתוני המשתמש
           loadUserData();
         }
       }
@@ -100,6 +100,9 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         if (plan === 'Free' && (now - startDate >= ONE_DAY_MS)) {
           usedCount = 0;
           startDate = now;
+          // נאפס את הלימיט ל-3 במידה והיו לו בונוסים מפרסומות אתמול
+          limit = 3; 
+          updates.cycle_limit = 3;
           updates.cycle_used_messages = 0;
           updates.cycle_start_date = now;
           needsUpdate = true;
@@ -191,6 +194,25 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     setLifetimeMessages(prev => prev + 1);
   };
 
+  // 🌟 הלוגיקה שתופעל אחרי צפייה מוצלחת בפרסומת 🌟
+  const grantRewardMessage = async () => {
+    const newLimit = cycleLimit + 1;
+    setCycleLimit(newLimit); // מעדכנים מיד בממשק
+    
+    if (user?.id) {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        if (token) {
+          await updateSubscriptionData(token, user.id, {
+            cycle_limit: newLimit
+          });
+        }
+      } catch (e) {
+        console.error("Error saving rewarded limit:", e);
+      }
+    }
+  };
+
   const startPremiumTrial = async (): Promise<boolean> => {
     if (!user?.id || hasUsedTrial) return false; 
     
@@ -220,7 +242,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         let selectedPackage: PurchasesPackage | null = null;
         const availablePackages = offerings.current.availablePackages;
 
-        // השינוי הקריטי: התאמה מדויקת למזהים החדשים ב-RevenueCat
         if (plan === 'PRO_monthly') {
           selectedPackage = availablePackages.find(p => p.identifier === '$rc_monthly') || null;
         } else if (plan === 'PRO_onetime') {
@@ -325,7 +346,8 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
       chatLanguage, changeLanguage, resetToFree,
       hasUsedTrial, isTrialActive, startPremiumTrial, refreshSubscription,
       incrementLocalCounter,
-      isFallbackMode, fallbackUsedMessages
+      isFallbackMode, fallbackUsedMessages,
+      grantRewardMessage // 🌟 חשפנו את הפונקציה החוצה
     }}>
       {children}
     </PaywallContext.Provider>
