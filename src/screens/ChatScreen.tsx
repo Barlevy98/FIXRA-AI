@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Animated, Dimensions, Keyboard, Modal } from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Animated, Dimensions, Keyboard, Modal, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,6 +8,9 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics'; 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient'; 
+// 🌟 תיקון: ייבוא הספריות של AdMob להצגת פרסומת מתגמלת
+import { RewardedAd, RewardedAdEventType, AdEventType, TestIds } from 'react-native-google-mobile-ads';
+
 import { MessageType } from '../types';
 import { usePaywall } from '../context/PaywallContext';
 import PaywallModal from '../components/PaywallModal';
@@ -26,7 +29,13 @@ import ChatInputArea from '../components/ChatInputArea';
 import ChatSideMenu from '../components/ChatSideMenu';
 import { useChatManager } from '../../hooks/useChatManager';
 
-const screenWidth = Dimensions.get('window').width;
+// 🌟 תיקון: הגדרת מזהה הפרסומת (אם מריצים בסביבת פיתוח נשתמש במזהה טסט, ואם בפרודקשן נשתמש במזהה שלך)
+const adUnitId = __DEV__ ? TestIds.REWARDED : 'ca-app-pub-9244809721385064/7538115836';
+
+// 🌟 תיקון: יצירת אובייקט הפרסומת מחוץ לקומפוננטה כדי שלא ייווצר מחדש בכל רנדור
+const rewardedAd = RewardedAd.createForAdRequest(adUnitId, {
+  requestNonPersonalizedAdsOnly: true,
+});
 
 const AnimatedMessageItem = ({ isUser, children }: { isUser: boolean, children: React.ReactNode }) => {
   const slideAnim = useRef(new Animated.Value(20)).current; 
@@ -54,13 +63,18 @@ export default function ChatScreen() {
   const { user } = useUser();
   const { getToken } = useAuth();
   
+  const { width: dynamicScreenWidth } = useWindowDimensions();
+  const isTablet = dynamicScreenWidth >= 768 || (Platform.OS === 'ios' && (Platform as any).isPad);
+
+  // 🌟 תיקון: הוספנו את הפונקציה grantRewardMessage לתוך הייבוא מהקונטקסט
   const { 
     hasReachedLimit, 
     chatLanguage, 
     currentPlan,
     hasUsedTrial,
     isTrialActive,
-    startPremiumTrial
+    startPremiumTrial,
+    grantRewardMessage 
   } = usePaywall();
   
   const t = getTranslation(chatLanguage);
@@ -93,8 +107,53 @@ export default function ChatScreen() {
   const [dismissedTrialPopup, setDismissedTrialPopup] = useState(false);
   const [isLimitModalVisible, setIsLimitModalVisible] = useState(false);
 
-  const slideAnim = useRef(new Animated.Value(screenWidth)).current;
+  // 🌟 תיקון: סטייט חדש שבודק אם הפרסומת מוכנה לצפייה
+  const [isAdLoaded, setIsAdLoaded] = useState(false);
+
+  const slideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current;
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // 🌟 תיקון: ה-useEffect שמנהל את הטעינה וההאזנה לאירועי הפרסומת
+  useEffect(() => {
+    const unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      setIsAdLoaded(true);
+    });
+
+    const unsubscribeEarned = rewardedAd.addAdEventListener(
+      RewardedAdEventType.EARNED_REWARD,
+      reward => {
+        // המשתמש סיים לצפות! מעניקים לו את ההודעה ומאפסים את המודל
+        grantRewardMessage();
+        setIsLimitModalVisible(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        // טוענים פרסומת חדשה לפעם הבאה
+        setIsAdLoaded(false);
+        rewardedAd.load();
+      },
+    );
+
+    const unsubscribeClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
+      // אם המשתמש סגר את הפרסומת (הצליח או לא), נטען פרסומת חדשה
+      setIsAdLoaded(false);
+      rewardedAd.load();
+    });
+
+    // מתחילים את הטעינה ברקע
+    rewardedAd.load();
+
+    return () => {
+      unsubscribeLoaded();
+      unsubscribeEarned();
+      unsubscribeClosed();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      slideAnim.setValue(dynamicScreenWidth);
+    }
+  }, [dynamicScreenWidth, isMenuOpen]);
 
   useEffect(() => {
     const syncName = async () => {
@@ -216,10 +275,11 @@ export default function ChatScreen() {
   const toggleMenu = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isMenuOpen) {
-      Animated.timing(slideAnim, { toValue: screenWidth, duration: 300, useNativeDriver: true }).start(() => setIsMenuOpen(false));
+      Animated.timing(slideAnim, { toValue: dynamicScreenWidth, duration: 300, useNativeDriver: true }).start(() => setIsMenuOpen(false));
     } else {
       setIsMenuOpen(true);
-      Animated.timing(slideAnim, { toValue: screenWidth * 0.3, duration: 300, useNativeDriver: true }).start();
+      const targetPosition = isTablet ? dynamicScreenWidth - 320 : dynamicScreenWidth * 0.3;
+      Animated.timing(slideAnim, { toValue: targetPosition, duration: 300, useNativeDriver: true }).start();
     }
   };
 
@@ -417,7 +477,10 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView 
+          style={styles.keyboardView} 
+          behavior={Platform.OS === 'ios' && !isTablet ? 'padding' : undefined}
+        >
           <View style={{ flex: 1 }}>
             
             <ScrollView 
@@ -506,6 +569,26 @@ export default function ChatScreen() {
               <Text style={styles.limitModalTitle}>{t.limitAlertTitle}</Text>
               <Text style={styles.limitModalSubtitle}>{t.limitReached(currentPlan)}</Text>
               
+              {/* 🌟 תיקון: הכפתור החדש לצפייה בפרסומת מתגמלת (מופיע מעל השדרוג) */}
+              <TouchableOpacity 
+                activeOpacity={0.8} 
+                style={[styles.trialPopupBtn, { marginBottom: 15, borderWidth: 1, borderColor: '#00e5ff', backgroundColor: 'rgba(0, 229, 255, 0.05)' }]}
+                onPress={() => {
+                  if (isAdLoaded) {
+                    rewardedAd.show();
+                  } else {
+                    Alert.alert('Loading', 'Ad is still loading. Please make sure you have internet connection and try again in a few seconds.');
+                  }
+                }}
+              >
+                <View style={[styles.trialPopupBtnGradient, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 }]}>
+                  <Ionicons name="play-circle" size={22} color="#00e5ff" />
+                  <Text style={[styles.trialPopupBtnText, { color: '#00e5ff' }]}>
+                    {isAdLoaded ? "Watch Ad for 1 Free Message" : "Loading Ad..."}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
               <TouchableOpacity 
                 activeOpacity={0.8} 
                 style={styles.trialPopupBtn} 

@@ -1,10 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Animated, StyleSheet, Dimensions } from 'react-native';
+// 🌟 תיקון: הבאנו את useWindowDimensions ו-Platform כדי לטפל בטאבלטים
+import { View, Text, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChatSession } from '../types';
-
-const screenWidth = Dimensions.get('window').width;
 
 interface ChatSideMenuProps {
   slideAnim: Animated.Value;
@@ -28,8 +27,17 @@ export default function ChatSideMenu({
   groupedSessions, expandedFolders, onToggleFolder, currentSessionId, onSwitchSession, onDeleteSession,
   newChatText, historyTitleText
 }: ChatSideMenuProps) {
+
+  // 🌟 תיקון: קבלת מידות המסך בזמן אמת וזיהוי אם אנחנו בטאבלט/אייפד
+  const { width: dynamicScreenWidth } = useWindowDimensions();
+  const isTablet = dynamicScreenWidth >= 768 || (Platform.OS === 'ios' && (Platform as any).isPad);
+  
+  // 🌟 תיקון: קביעת רוחב ספציפי של 320 פיקסלים בטאבלט כדי שהתפריט לא ייחתך, ובפלאפונים 75% כרגיל
+  const menuWidth = isTablet ? 320 : dynamicScreenWidth * 0.75;
+
   return (
-    <Animated.View style={[styles.sideMenu, { transform: [{ translateX: slideAnim }] }]}>
+    // 🌟 תיקון: העברנו את ה-width פנימה לסטייל הדינמי במקום הסטייל הסטטי
+    <Animated.View style={[styles.sideMenu, { width: menuWidth, transform: [{ translateX: slideAnim }] }]}>
       <View style={styles.menuContent}>
         
         <TouchableOpacity activeOpacity={0.8} onPress={onNewChat}>
@@ -60,7 +68,6 @@ export default function ChatSideMenu({
             <Text style={[styles.menuActionText, { color: '#00e5ff' }]} numberOfLines={1} adjustsFontSizeToFit>Community</Text>
           </TouchableOpacity>
 
-          {/* 🌟 האייקון החדש והנקי של ה-Upgrade 🌟 */}
           <TouchableOpacity style={styles.menuActionItem} onPress={onOpenPaywall}>
             <View style={[styles.menuActionCircle, { backgroundColor: 'rgba(138, 43, 226, 0.15)' }]}>
               <Ionicons name="flash" size={14} color="#b19cd9" style={{ marginBottom: -2 }} />
@@ -102,20 +109,20 @@ const styles = StyleSheet.create({
     position: 'absolute', 
     top: 0, 
     bottom: 0, 
-    right: 0, // הפתרון לבעיית החיתוך באנדרואיד - עיגון מוחלט לימין
-    width: screenWidth * 0.75, 
+    right: 0, 
+    // 🌟 תיקון: הסרנו את הרוחב הקשיח מכאן (width: screenWidth * 0.75) כי הוא מחושב דינמית למעלה
     backgroundColor: 'rgba(10, 0, 38, 0.95)', 
     zIndex: 100, 
     borderLeftWidth: 1, 
     borderLeftColor: 'rgba(255,255,255,0.1)', 
-    paddingHorizontal: 15, // שונה מעט כדי למנוע דחיסה של האייקונים באנדרואיד
+    paddingHorizontal: 15, 
     paddingVertical: 20
   },
   menuContent: { marginTop: 60, flex: 1 },
   newChatBtn: { padding: 15, borderRadius: 15, alignItems: 'center', marginBottom: 20 },
   newChatBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
   menuTopActions: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25, width: '100%' },
-  menuActionItem: { alignItems: 'center', flex: 1 }, // שונה מ-25% ל-flex: 1 לחלוקה שווה ובטוחה יותר
+  menuActionItem: { alignItems: 'center', flex: 1 }, 
   menuActionCircle: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   menuActionText: { color: '#aaaaaa', fontSize: 11, fontWeight: '600' },
   menuSectionTitle: { color: '#00e5ff', fontSize: 13, fontWeight: 'bold', marginBottom: 15, textAlign: 'left', letterSpacing: 1 },

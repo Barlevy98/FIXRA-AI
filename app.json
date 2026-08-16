@@ -44,7 +44,13 @@
           "microphonePermission": "Allow FIXRA AI to access your microphone for recording video gameplay."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "iosAppId": "ca-app-pub-9244809721385064~2996235590"
+        }
+      ]
     ],
     "extra": {
       "eas": {
