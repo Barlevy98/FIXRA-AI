@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import ChatScreen from './ChatScreen';
@@ -6,10 +7,10 @@ import ChatScreen from './ChatScreen';
 // 1. טיפול בטיימרים כדי למנוע זליגה ואזהרות בסוף הטסט
 // ---------------------------------------------------------
 beforeAll(() => {
-  jest.spyOn(global, 'setInterval').mockImplementation((() => {}) as any);
-  jest.spyOn(global, 'clearInterval').mockImplementation((() => {}) as any);
+  jest.useFakeTimers();
 });
 afterAll(() => {
+  jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
@@ -35,7 +36,7 @@ jest.mock('../../hooks/useChatManager', () => ({
 }));
 
 // ---------------------------------------------------------
-// 3. התיקון הקריטי: זיוף INLINE מוחלט (ללא משתני עזר שיכולים ללכת לאיבוד!)
+// 3. התיקון הקריטי: זיופים (Mocks) לספריות צד שלישי
 // ---------------------------------------------------------
 jest.mock('expo-linear-gradient', () => {
   const React = require('react');
@@ -45,7 +46,6 @@ jest.mock('expo-linear-gradient', () => {
   };
 });
 
-// התיקון הקריטי שמונע את הקריסה של הפונטים והאייקונים
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: 'Ionicons'
 }));
@@ -58,6 +58,27 @@ jest.mock('react-native-safe-area-context', () => {
     SafeAreaView: ({ children }: any) => React.createElement(React.Fragment, null, children)
   };
 });
+
+// 🌟 התיקון שלנו: מונע את קריסת ספריית AdMob בשרת הבדיקות
+jest.mock('react-native-google-mobile-ads', () => ({
+  RewardedAd: {
+    createForAdRequest: jest.fn(() => ({
+      addAdEventListener: jest.fn(),
+      load: jest.fn(),
+      show: jest.fn(),
+    })),
+  },
+  RewardedAdEventType: {
+    LOADED: 'loaded',
+    EARNED_REWARD: 'earned_reward',
+  },
+  AdEventType: {
+    CLOSED: 'closed',
+  },
+  TestIds: {
+    REWARDED: 'test-id',
+  },
+}));
 
 jest.mock('../components/MessageBubble', () => {
   const React = require('react');
@@ -116,7 +137,8 @@ jest.mock('../context/PaywallContext', () => ({
     currentPlan: 'free',
     hasUsedTrial: false,
     isTrialActive: false,
-    startPremiumTrial: jest.fn()
+    startPremiumTrial: jest.fn(),
+    grantRewardMessage: jest.fn() // הוספנו את הפונקציה החדשה גם לכאן כדי למנוע שגיאות
   })
 }));
 
