@@ -4,7 +4,7 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import ChatScreen from './ChatScreen';
 
 // ---------------------------------------------------------
-// 1. טיפול בטיימרים כדי למנוע זליגה ואזהרות בסוף הטסט
+// 1. טיפול בטיימרים באמצעות פייק-טיימרים של Jest
 // ---------------------------------------------------------
 beforeAll(() => {
   jest.useFakeTimers();
@@ -36,7 +36,7 @@ jest.mock('../../hooks/useChatManager', () => ({
 }));
 
 // ---------------------------------------------------------
-// 3. התיקון הקריטי: זיופים (Mocks) לספריות צד שלישי
+// 3. זיופים (Mocks) לספריות צד שלישי
 // ---------------------------------------------------------
 jest.mock('expo-linear-gradient', () => {
   const React = require('react');
@@ -59,11 +59,11 @@ jest.mock('react-native-safe-area-context', () => {
   };
 });
 
-// 🌟 התיקון שלנו: מונע את קריסת ספריית AdMob בשרת הבדיקות
+// 🌟 תיקון AdMob: מחזירים פונקציה ריקה (jest.fn) עבור Unsubscribe כדי למנוע את הקריסה
 jest.mock('react-native-google-mobile-ads', () => ({
   RewardedAd: {
     createForAdRequest: jest.fn(() => ({
-      addAdEventListener: jest.fn(),
+      addAdEventListener: jest.fn(() => jest.fn()), 
       load: jest.fn(),
       show: jest.fn(),
     })),
@@ -138,7 +138,7 @@ jest.mock('../context/PaywallContext', () => ({
     hasUsedTrial: false,
     isTrialActive: false,
     startPremiumTrial: jest.fn(),
-    grantRewardMessage: jest.fn() // הוספנו את הפונקציה החדשה גם לכאן כדי למנוע שגיאות
+    grantRewardMessage: jest.fn()
   })
 }));
 
