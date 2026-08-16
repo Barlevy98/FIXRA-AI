@@ -1,0 +1,42 @@
+name: Build Frontend (Expo)
+
+# יוצר את הכפתור הידני בגיטהאב, כולל אפשרות בחירת פלטפורמה
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'בחר פלטפורמה לבילד'
+        required: true
+        default: 'ios'
+        type: choice
+        options:
+          - ios
+          - android
+          - all
+
+jobs:
+  build:
+    name: Run EAS Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # מתחבר לחשבון האקספו שלך בעזרת הסוד שהרגע הוספנו
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install Dependencies
+        run: npm install
+
+      # מריץ את פקודת הבילד לפי הפלטפורמה שבחרת
+      - name: Run EAS Build
+        run: eas build --platform ${{ github.event.inputs.platform }} --non-interactive
