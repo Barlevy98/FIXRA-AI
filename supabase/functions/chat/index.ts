@@ -141,33 +141,37 @@ Deno.serve(async (req) => {
         serverValidatedPlan = profile.current_plan || 'Free';
         const dbLimit = profile.cycle_limit || 1;
 
-        // 🌟 "סודות הפרסומות" - השרת לומד שצפייה בפרסומת נותנת יכולות מתקדמות 🌟
+        // 🌟 סודות הפרסומות - מעניקים טעימת יכולות מבלי לשנות את סוג המנוי בבסיס
+        let effectiveCapabilities = serverValidatedPlan;
         if (serverValidatedPlan.toLowerCase() === 'free') {
             if (dbLimit === 2) {
-                serverValidatedPlan = 'PRO_monthly';
+                effectiveCapabilities = 'PRO_monthly'; // טעימת פרו
             } else if (dbLimit >= 3) {
-                serverValidatedPlan = 'PREMIUM';
+                effectiveCapabilities = 'PREMIUM'; // טעימת פרימיום
             }
         }
 
-        const planLower = serverValidatedPlan.toLowerCase();
-        isActuallyPremium = planLower.includes('premium');
-        isActuallyPro = isActuallyPremium || profile.is_pro || planLower.includes('pro');
-        const isOnetime = planLower === 'pro_onetime' || planLower.includes('onetime') || planLower.includes('חד פעמי');
+        const billingPlanLower = serverValidatedPlan.toLowerCase(); // החיוב האמיתי
+        const capabilitiesLower = effectiveCapabilities.toLowerCase(); // היכולות בפועל להרצה זו
 
-        // 🌟 המכסה שמשתמשים בה לבדיקה היא תמיד המכסה המעודכנת מהמסד 🌟
+        // מדליקים יכולות לפי ה"טעימה" שהוענקה
+        isActuallyPremium = capabilitiesLower.includes('premium');
+        isActuallyPro = isActuallyPremium || profile.is_pro || capabilitiesLower.includes('pro');
+        const isOnetime = billingPlanLower === 'pro_onetime' || billingPlanLower.includes('onetime') || billingPlanLower.includes('חד פעמי');
+
         limit = dbLimit;
 
-        if (isActuallyPremium) {
+        // 🌟 חוקי החסימות נקבעים אך ורק על פי תוכנית החיוב האמיתית (Free)
+        if (billingPlanLower.includes('premium')) {
           cycleMs = 2592000000;
-        } else if (isActuallyPro) {
+        } else if (billingPlanLower.includes('pro')) {
           if (isOnetime) {
             isTotalLimit = true;
           } else {
             cycleMs = 2592000000;
           }
         } else {
-          // משתמש חינם רגיל (שלא צפה בפרסומות) - אין איפוס זמנים
+          // משתמש Free אמיתי - גם אם הוא ראה פרסומת, הוא מקבל חסימה מוחלטת ללא איפוס!
           cycleMs = 86400000;
           isTotalLimit = true;
         }
@@ -176,7 +180,6 @@ Deno.serve(async (req) => {
         const bonus = profile.bonus_solves_balance || 0;
         let currentCycleCount = profile.cycle_used_messages || 0;
 
-        // רק משתמשי תוכנית "חד פעמית" יאבדו את הפרו שלהם בסוף המכסה
         if (isTotalLimit && currentCycleCount >= limit && bonus <= 0 && isOnetime) {
             await supabase.from('user_profiles').update({
                 current_plan: 'Free',
@@ -201,7 +204,8 @@ Deno.serve(async (req) => {
           const activeCount = isNewCycle ? 0 : currentCycleCount;
           
           if (activeCount >= limit && bonus <= 0) {
-            if (serverValidatedPlan === 'PRO_monthly') {
+            // הודעות גיבוי רלוונטיות רק למנויי פרו אמיתיים
+            if (billingPlanLower === 'pro_monthly') {
                const fbStart = profile.fallback_start_date || 0;
                const fbUsed = (now - fbStart >= 86400000) ? 0 : (profile.fallback_used_messages || 0);
                
@@ -412,7 +416,8 @@ To reject, return exactly this JSON:
       if (aiResponseJSON.fextralifeQuery) allAvailableLinks.push({ type: 'fextralife', data: { title: "⚔️ Fextralife Boss Guide", url: `https://www.google.com/search?q=${encodeURIComponent('site:fextralife.com ' + aiResponseJSON.fextralifeQuery)}&udm=14`, thumbnail: "https://fextralife.com/wp-content/uploads/2021/05/fextralife-logo-150x150.png" } });
     }
 
-    let allowedLinksCount = serverValidatedPlan === 'PREMIUM' ? 10 : (serverValidatedPlan?.startsWith('PRO') ? 3 : 1);
+    // 🌟 חלוקת הקישורים נקבעת גם היא על פי ה"טעימה" המוענקת
+    let allowedLinksCount = isActuallyPremium ? 10 : (isActuallyPro ? 3 : 1);
     let finalLinks: any[] = [];
 
     if (allowedLinksCount === 1) {
