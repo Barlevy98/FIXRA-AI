@@ -133,38 +133,51 @@ Deno.serve(async (req) => {
     if (userId && supabase) {
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('current_plan, is_pro, lifetime_messages, cycle_used_messages, cycle_start_date, bonus_solves_balance, fallback_used_messages, fallback_start_date')
+        .select('current_plan, is_pro, lifetime_messages, cycle_used_messages, cycle_start_date, bonus_solves_balance, fallback_used_messages, fallback_start_date, cycle_limit')
         .eq('user_id', userId)
         .single();
 
       if (profile) {
         serverValidatedPlan = profile.current_plan || 'Free';
+        const dbLimit = profile.cycle_limit || 1;
+
+        // 🌟 "סודות הפרסומות" - השרת לומד שצפייה בפרסומת נותנת יכולות מתקדמות 🌟
+        if (serverValidatedPlan.toLowerCase() === 'free') {
+            if (dbLimit === 2) {
+                serverValidatedPlan = 'PRO_monthly';
+            } else if (dbLimit >= 3) {
+                serverValidatedPlan = 'PREMIUM';
+            }
+        }
+
         const planLower = serverValidatedPlan.toLowerCase();
-        
         isActuallyPremium = planLower.includes('premium');
         isActuallyPro = isActuallyPremium || profile.is_pro || planLower.includes('pro');
+        const isOnetime = planLower === 'pro_onetime' || planLower.includes('onetime') || planLower.includes('חד פעמי');
+
+        // 🌟 המכסה שמשתמשים בה לבדיקה היא תמיד המכסה המעודכנת מהמסד 🌟
+        limit = dbLimit;
 
         if (isActuallyPremium) {
-          limit = 500;
-          cycleMs = 2592000000; 
+          cycleMs = 2592000000;
         } else if (isActuallyPro) {
-          if (planLower === 'pro_onetime' || planLower.includes('onetime') || planLower.includes('חד פעמי')) {
-            limit = 50;
+          if (isOnetime) {
             isTotalLimit = true;
           } else {
-            limit = 50;
-            cycleMs = 2592000000; 
+            cycleMs = 2592000000;
           }
         } else {
-          limit = 3;
-          cycleMs = 86400000; 
+          // משתמש חינם רגיל (שלא צפה בפרסומות) - אין איפוס זמנים
+          cycleMs = 86400000;
+          isTotalLimit = true;
         }
 
         const now = Date.now();
         const bonus = profile.bonus_solves_balance || 0;
         let currentCycleCount = profile.cycle_used_messages || 0;
 
-        if (isTotalLimit && currentCycleCount >= limit && bonus <= 0) {
+        // רק משתמשי תוכנית "חד פעמית" יאבדו את הפרו שלהם בסוף המכסה
+        if (isTotalLimit && currentCycleCount >= limit && bonus <= 0 && isOnetime) {
             await supabase.from('user_profiles').update({
                 current_plan: 'Free',
                 is_pro: false,
@@ -174,9 +187,8 @@ Deno.serve(async (req) => {
             
             serverValidatedPlan = 'Free';
             isActuallyPro = false;
-            limit = 3;
-            cycleMs = 86400000;
-            isTotalLimit = false;
+            limit = 1; 
+            isTotalLimit = true;
             currentCycleCount = 0;
             profile.cycle_start_date = now;
         }
@@ -287,14 +299,13 @@ To reject, return exactly this JSON:
     let attemptCount = 0;
     const MAX_RETRIES = 2;
     let lastError = null;
-    let forceGeminiFallback = false; // 🌟 דגל הגיבוי החדש
+    let forceGeminiFallback = false; 
 
     while (attemptCount < MAX_RETRIES && !rawParsed) {
       attemptCount++;
       let responseText = "";
 
       try {
-        // 🌟 אם יש תמונה, או שזיהינו קריסה של Groq והדלקנו את הגיבוי
         if (hasMedia || forceGeminiFallback) {
           providerUsed = forceGeminiFallback ? "Gemini-2.5-Flash (Fallback)" : "Gemini-2.5-Flash (Media)";
           const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -317,7 +328,6 @@ To reject, return exactly this JSON:
           responseText = result.response.text();
 
         } else {
-           // 🌟 מודלים חדשים ומהירים/כבדים מ-Groq, בדיוק לפי האימייל שלהם
            const groqModel = isActuallyPremium ? "gpt-oss-120b" : "qwen-3.6-27b";
            providerUsed = isActuallyPremium ? "Groq (Premium 120B)" : (isActuallyPro ? "Groq (Pro 27B)" : "Groq (Free 27B)");
            
@@ -349,7 +359,6 @@ To reject, return exactly this JSON:
         console.warn(`[AI ERROR] Attempt ${attemptCount} failed: ${err.message}`);
         rawParsed = null; 
         
-        // 🌟 הפעלת ה-Fallback ל-Gemini אם Groq קרס בניסיון הראשון
         if (attemptCount === 1 && !hasMedia) {
            forceGeminiFallback = true;
            console.log("[FALLBACK] Groq failed. Switching to Gemini for the next attempt...");

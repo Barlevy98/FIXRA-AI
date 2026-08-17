@@ -14,7 +14,7 @@ type PaywallContextType = {
   hasReachedLimit: boolean;
   isPro: boolean;
   currentPlan: string; 
-  effectivePlan: string; // 🌟 מוסיפים תוכנית מחושבת שמשתנה לפי מדרגת הפרסומת
+  effectivePlan: string; 
   purchasePackage: (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => Promise<void>;
   chatLanguage: string;
   changeLanguage: (lang: string) => Promise<void>;
@@ -34,7 +34,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
   
   const [cycleUsedMessages, setCycleUsedMessages] = useState(0);
   const [lifetimeMessages, setLifetimeMessages] = useState(0);
-  const [cycleLimit, setCycleLimit] = useState(1); // 🌟 בברירת מחדל יש למשתמש רק הודעה אחת!
+  const [cycleLimit, setCycleLimit] = useState(1); 
   const [cycleStartDate, setCycleStartDate] = useState(Date.now());
   
   const [isPro, setIsPro] = useState(false);
@@ -91,8 +91,6 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
 
         const isOneTime = plan === 'PRO_onetime';
 
-        // 🌟 המחיקה הקריטית: אין יותר איפוס 24 שעות למשתמשי החינם. מה שנוצל, נוצל לנצח.
-
         if (isOneTime && usedCount >= limit) {
           plan = 'Free';
           limit = 1;
@@ -136,7 +134,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         await updateSubscriptionData(token, user.id, {
           cycle_used_messages: 0,
           lifetime_messages: 0,
-          cycle_limit: 1, // מתחילים מ-1 הודעה בחינם
+          cycle_limit: 1, 
           cycle_start_date: now,
           current_plan: 'Free',
           is_pro: false,
@@ -172,22 +170,21 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     setLifetimeMessages(prev => prev + 1);
   };
 
+  // 🌟 התיקון לספירת הפרסומות: שימוש ב-Callback מדויק למניעת דריסה
   const grantRewardMessage = async () => {
-    const newLimit = cycleLimit + 1;
-    setCycleLimit(newLimit); 
-    
-    if (user?.id) {
-      try {
-        const token = await getToken({ template: 'supabase' });
-        if (token) {
-          await updateSubscriptionData(token, user.id, {
-            cycle_limit: newLimit
-          });
-        }
-      } catch (e) {
-        console.error("Error saving rewarded limit:", e);
+    setCycleLimit(prevLimit => {
+      const newLimit = prevLimit + 1;
+      
+      if (user?.id) {
+        getToken({ template: 'supabase' }).then(token => {
+          if (token) {
+            updateSubscriptionData(token, user.id, { cycle_limit: newLimit });
+          }
+        }).catch(e => console.error("Error saving rewarded limit:", e));
       }
-    }
+      
+      return newLimit;
+    });
   };
 
   const purchasePackage = async (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => {
@@ -292,11 +289,11 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     calculatedHasReachedLimit = cycleUsedMessages >= cycleLimit;
   }
 
-  // 🌟 לוגיקה חכמה שמשנה את התוכנית למשתמש לפי השלב שלו במשפך הפרסומות
+  // 🌟 לוגיקת המעבר (המשפך) החדשה והפשוטה
   let effectivePlan = currentPlan;
   if (currentPlan === 'Free') {
-    if (cycleLimit === 2 && cycleUsedMessages === 1) effectivePlan = 'PRO_monthly';
-    else if (cycleLimit === 3 && cycleUsedMessages === 2) effectivePlan = 'PREMIUM';
+    if (cycleLimit === 2) effectivePlan = 'PRO_monthly';
+    else if (cycleLimit >= 3) effectivePlan = 'PREMIUM';
   }
 
   return (
