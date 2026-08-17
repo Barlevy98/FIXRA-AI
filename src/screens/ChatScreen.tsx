@@ -103,6 +103,12 @@ export default function ChatScreen() {
   const slideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
+  // 🌟 התיקון הקריטי למניעת Stale Closure בפרסומות 🌟
+  const grantRewardRef = useRef(grantRewardMessage);
+  useEffect(() => {
+    grantRewardRef.current = grantRewardMessage;
+  }, [grantRewardMessage]);
+
   useEffect(() => {
     const unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
       setIsAdLoaded(true);
@@ -111,7 +117,8 @@ export default function ChatScreen() {
     const unsubscribeEarned = rewardedAd.addAdEventListener(
       RewardedAdEventType.EARNED_REWARD,
       reward => {
-        grantRewardMessage();
+        // 🌟 תמיד משתמשים בפונקציה העדכנית מהרפרנס 🌟
+        grantRewardRef.current();
         setIsLimitModalVisible(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
@@ -263,9 +270,6 @@ export default function ChatScreen() {
       Animated.timing(slideAnim, { toValue: dynamicScreenWidth, duration: 300, useNativeDriver: true }).start(() => setIsMenuOpen(false));
     } else {
       setIsMenuOpen(true);
-      // 🌟 התיקון הקריטי למתמטיקה: 
-      // בטאבלט - משאירים מקום של 320 פיקסלים. 
-      // בפלאפון - עוצרים ב-25% (0.25) כי התפריט תופס 75%, ככה זה יושב בול על 100%.
       const targetPosition = isTablet ? dynamicScreenWidth - 320 : dynamicScreenWidth * 0.25;
       Animated.timing(slideAnim, { toValue: targetPosition, duration: 300, useNativeDriver: true }).start();
     }
@@ -490,7 +494,6 @@ export default function ChatScreen() {
 
             <View style={{ position: 'relative' }}>
               
-              {/* 🌟 האייקון הצף והקבוע שמופיע כשיש זכאות לפרסומת ונגמרו ההודעות */}
               {canWatchAd && hasReachedLimit && (
                 <TouchableOpacity 
                   style={styles.floatingAdBtn}
@@ -585,7 +588,6 @@ export default function ChatScreen() {
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.trialPopupCloseBtn} onPress={() => setIsLimitModalVisible(false)}>
-                {/* 🌟 שינוי הטקסט של הביטול ל"אולי אחר כך" אם יש פרסומות */}
                 <Text style={styles.limitCancelText}>{canWatchAd ? (t as any).maybeLater : t.cancel}</Text>
               </TouchableOpacity>
             </View>
@@ -634,7 +636,6 @@ const styles = StyleSheet.create({
   limitModalSubtitle: { color: '#aaaaaa', fontSize: 15, textAlign: 'center', marginBottom: 25, lineHeight: 22 },
   limitCancelText: { color: '#888888', fontSize: 15, fontWeight: 'bold' },
   
-  // עיצוב לכפתור האייקון המרחף מעל שורת ההקלדה
   floatingAdBtn: {
     position: 'absolute',
     top: -45, 
