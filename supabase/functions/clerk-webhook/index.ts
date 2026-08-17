@@ -8,6 +8,11 @@ Deno.serve(async (req) => {
     if (payload.type === 'user.created') {
       const userId = payload.data.id;
       const referredByCode = payload.data.unsafe_metadata?.referred_by || null;
+      
+      // 🌟 שולפים את השם מתוך הנתונים של קלארק (גם כשזה מגיע מגוגל)
+      const firstName = payload.data.first_name || '';
+      const lastName = payload.data.last_name || '';
+      const fullName = `${firstName} ${lastName}`.trim() || 'Gamer';
 
       const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
       const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -15,10 +20,16 @@ Deno.serve(async (req) => {
       if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
         const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-        // הסרנו לחלוטין את הניסיון להכניס את האימייל לטבלה
+        // 🌟 מכניסים את המשתמש החדש עם השם, והכי חשוב - עם הגבלת הודעה 1 בלבד!
         const { error } = await supabase.from('user_profiles').upsert({
           user_id: userId,
           referred_by: referredByCode,
+          full_name: fullName,
+          current_plan: 'Free',
+          is_pro: false,
+          cycle_limit: 1, // <--- הודעה 1 למשתמש חדש
+          cycle_used_messages: 0,
+          cycle_start_date: Date.now(),
           updated_at: Date.now()
         });
 
@@ -27,7 +38,7 @@ Deno.serve(async (req) => {
           return new Response(JSON.stringify({ error: error.message }), { status: 400 });
         }
 
-        console.log(`[SUCCESS] User ${userId} created in DB!`);
+        console.log(`[SUCCESS] User ${userId} (${fullName}) created in DB with 1 free message!`);
 
         if (referredByCode) {
            const { data: referrer } = await supabase
