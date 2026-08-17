@@ -1,5 +1,4 @@
 import React from 'react';
-// 🌟 תיקון: הבאנו את useWindowDimensions ו-Platform כדי לטפל בטאבלטים
 import { View, Text, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,15 +27,12 @@ export default function ChatSideMenu({
   newChatText, historyTitleText
 }: ChatSideMenuProps) {
 
-  // 🌟 תיקון: קבלת מידות המסך בזמן אמת וזיהוי אם אנחנו בטאבלט/אייפד
   const { width: dynamicScreenWidth } = useWindowDimensions();
   const isTablet = dynamicScreenWidth >= 768 || (Platform.OS === 'ios' && (Platform as any).isPad);
   
-  // 🌟 תיקון: קביעת רוחב ספציפי של 320 פיקסלים בטאבלט כדי שהתפריט לא ייחתך, ובפלאפונים 75% כרגיל
   const menuWidth = isTablet ? 320 : dynamicScreenWidth * 0.75;
 
   return (
-    // 🌟 תיקון: העברנו את ה-width פנימה לסטייל הדינמי במקום הסטייל הסטטי
     <Animated.View style={[styles.sideMenu, { width: menuWidth, transform: [{ translateX: slideAnim }] }]}>
       <View style={styles.menuContent}>
         
@@ -109,8 +105,7 @@ const styles = StyleSheet.create({
     position: 'absolute', 
     top: 0, 
     bottom: 0, 
-    right: 0, 
-    // 🌟 תיקון: הסרנו את הרוחב הקשיח מכאן (width: screenWidth * 0.75) כי הוא מחושב דינמית למעלה
+    left: 0, // 🌟 התיקון הקריטי: מעגנים לשמאל כדי שהאנימציה מ-ChatScreen תדחוף אותו למקום המושלם
     backgroundColor: 'rgba(10, 0, 38, 0.95)', 
     zIndex: 100, 
     borderLeftWidth: 1, 

@@ -263,7 +263,10 @@ export default function ChatScreen() {
       Animated.timing(slideAnim, { toValue: dynamicScreenWidth, duration: 300, useNativeDriver: true }).start(() => setIsMenuOpen(false));
     } else {
       setIsMenuOpen(true);
-      const targetPosition = isTablet ? dynamicScreenWidth - 320 : dynamicScreenWidth * 0.3;
+      // 🌟 התיקון הקריטי למתמטיקה: 
+      // בטאבלט - משאירים מקום של 320 פיקסלים. 
+      // בפלאפון - עוצרים ב-25% (0.25) כי התפריט תופס 75%, ככה זה יושב בול על 100%.
+      const targetPosition = isTablet ? dynamicScreenWidth - 320 : dynamicScreenWidth * 0.25;
       Animated.timing(slideAnim, { toValue: targetPosition, duration: 300, useNativeDriver: true }).start();
     }
   };
