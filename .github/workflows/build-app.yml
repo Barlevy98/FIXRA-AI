@@ -37,6 +37,12 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      # מריץ את פקודת הבילד לפי הפלטפורמה שבחרת
-      - name: Run EAS Build
-        run: eas build --platform ${{ github.event.inputs.platform }} --non-interactive
+      # בילד בלבד לאנדרואיד (ללא שליחה לחנות!)
+      - name: Run EAS Build (Android)
+        if: ${{ github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all' }}
+        run: eas build --platform android --non-interactive
+
+      # בילד כולל שליחה אוטומטית ל-TestFlight (iOS בלבד)
+      - name: Run EAS Build & Submit (iOS)
+        if: ${{ github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'all' }}
+        run: eas build --platform ios --auto-submit --non-interactive

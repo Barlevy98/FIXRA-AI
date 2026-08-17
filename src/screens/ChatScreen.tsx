@@ -8,7 +8,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics'; 
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient'; 
-// 🌟 תיקון: ייבוא הספריות של AdMob להצגת פרסומת מתגמלת
 import { RewardedAd, RewardedAdEventType, AdEventType, TestIds } from 'react-native-google-mobile-ads';
 
 import { MessageType } from '../types';
@@ -29,10 +28,8 @@ import ChatInputArea from '../components/ChatInputArea';
 import ChatSideMenu from '../components/ChatSideMenu';
 import { useChatManager } from '../../hooks/useChatManager';
 
-// 🌟 תיקון: הגדרת מזהה הפרסומת (אם מריצים בסביבת פיתוח נשתמש במזהה טסט, ואם בפרודקשן נשתמש במזהה שלך)
 const adUnitId = __DEV__ ? TestIds.REWARDED : 'ca-app-pub-9244809721385064/7538115836';
 
-// 🌟 תיקון: יצירת אובייקט הפרסומת מחוץ לקומפוננטה כדי שלא ייווצר מחדש בכל רנדור
 const rewardedAd = RewardedAd.createForAdRequest(adUnitId, {
   requestNonPersonalizedAdsOnly: true,
 });
@@ -66,21 +63,17 @@ export default function ChatScreen() {
   const { width: dynamicScreenWidth } = useWindowDimensions();
   const isTablet = dynamicScreenWidth >= 768 || (Platform.OS === 'ios' && (Platform as any).isPad);
 
-  // 🌟 תיקון: הוספנו את הפונקציה grantRewardMessage לתוך הייבוא מהקונטקסט
   const { 
     hasReachedLimit, 
     chatLanguage, 
     currentPlan,
-    hasUsedTrial,
-    isTrialActive,
-    startPremiumTrial,
+    effectivePlan,
+    cycleLimit,
     grantRewardMessage 
   } = usePaywall();
   
   const t = getTranslation(chatLanguage);
   const greetingText = t.greeting(user?.firstName || '');
-
-  const effectivePlan = isTrialActive ? 'PREMIUM' : currentPlan;
 
   const chatManager = useChatManager(user, getToken, chatLanguage, effectivePlan, t, greetingText);
 
@@ -104,16 +97,12 @@ export default function ChatScreen() {
   const [isGameLibraryVisible, setIsGameLibraryVisible] = useState(false);
   const [hasAutoOpenedLibrary, setHasAutoOpenedLibrary] = useState(false);
 
-  const [dismissedTrialPopup, setDismissedTrialPopup] = useState(false);
   const [isLimitModalVisible, setIsLimitModalVisible] = useState(false);
-
-  // 🌟 תיקון: סטייט חדש שבודק אם הפרסומת מוכנה לצפייה
   const [isAdLoaded, setIsAdLoaded] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // 🌟 תיקון: ה-useEffect שמנהל את הטעינה וההאזנה לאירועי הפרסומת
   useEffect(() => {
     const unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
       setIsAdLoaded(true);
@@ -122,24 +111,20 @@ export default function ChatScreen() {
     const unsubscribeEarned = rewardedAd.addAdEventListener(
       RewardedAdEventType.EARNED_REWARD,
       reward => {
-        // המשתמש סיים לצפות! מעניקים לו את ההודעה ומאפסים את המודל
         grantRewardMessage();
         setIsLimitModalVisible(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
-        // טוענים פרסומת חדשה לפעם הבאה
         setIsAdLoaded(false);
         rewardedAd.load();
       },
     );
 
     const unsubscribeClosed = rewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
-      // אם המשתמש סגר את הפרסומת (הצליח או לא), נטען פרסומת חדשה
       setIsAdLoaded(false);
       rewardedAd.load();
     });
 
-    // מתחילים את הטעינה ברקע
     rewardedAd.load();
 
     return () => {
@@ -393,7 +378,7 @@ export default function ChatScreen() {
   const handleSendMessage = async () => {
     if (inputText.trim() === '' && !selectedMedia) return;
     
-    if (hasReachedLimit && !isTrialActive) { 
+    if (hasReachedLimit) { 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setIsLimitModalVisible(true);
       return; 
@@ -422,22 +407,14 @@ export default function ChatScreen() {
     chatManager.createNewSession(undefined, gameName); 
   };
 
-  const handleStartTrial = async () => {
-    const success = await startPremiumTrial();
-    if (success) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setDismissedTrialPopup(true);
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    }
-  };
-
   const handleTrapClick = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     setIsLimitModalVisible(true);
   };
 
-  const showInYourFaceTrial = hasReachedLimit && !hasUsedTrial && !dismissedTrialPopup;
+  const isFreePlan = currentPlan === 'Free';
+  const canWatchAd = isFreePlan && cycleLimit < 3;
+  const adButtonText = cycleLimit === 1 ? (t as any).watchAdForPro : (t as any).watchAdForPremium;
 
   return (
     <LinearGradient colors={['#050012', '#0a0026', '#000000']} style={styles.background}>
@@ -509,6 +486,27 @@ export default function ChatScreen() {
             </ScrollView>
 
             <View style={{ position: 'relative' }}>
+              
+              {/* 🌟 האייקון הצף והקבוע שמופיע כשיש זכאות לפרסומת ונגמרו ההודעות */}
+              {canWatchAd && hasReachedLimit && (
+                <TouchableOpacity 
+                  style={styles.floatingAdBtn}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    if (isAdLoaded) {
+                      rewardedAd.show();
+                    } else {
+                      Alert.alert('Loading', 'Ad is still loading. Please make sure you have internet connection and try again in a few seconds.');
+                    }
+                  }}
+                >
+                  <LinearGradient colors={['#00e5ff', '#007acc']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.floatingAdGradient}>
+                    <Ionicons name="play-circle" size={20} color="#ffffff" />
+                    <Text style={styles.floatingAdText}>{(t as any).adIconText}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+
               <ChatInputArea 
                 inputText={inputText}
                 setInputText={setInputText}
@@ -519,13 +517,13 @@ export default function ChatScreen() {
                 onSendMessage={handleSendMessage}
                 onOpenCamera={openCamera}
                 onOpenGallery={openGallery}
-                placeholder={hasReachedLimit && !isTrialActive ? t.lockedPlaceholder(currentPlan) : t.placeholder}
+                placeholder={hasReachedLimit ? t.lockedPlaceholder(currentPlan) : t.placeholder}
                 cameraText={t.camera}
                 galleryText={t.gallery}
                 disclaimerText={t.disclaimer}
               />
               
-              {hasReachedLimit && !isTrialActive && (
+              {hasReachedLimit && (
                 <TouchableOpacity 
                   style={styles.paywallTrapOverlay} 
                   activeOpacity={1}
@@ -537,28 +535,6 @@ export default function ChatScreen() {
           </View>
         </KeyboardAvoidingView>
 
-        <Modal visible={showInYourFaceTrial} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={styles.trialPopupCard}>
-              <View style={styles.trialIconWrapper}>
-                 <Ionicons name="gift" size={50} color="#ff00cc" />
-              </View>
-              <Text style={styles.trialPopupTitle}>{t.trialPopupTitle}</Text>
-              <Text style={styles.trialPopupSubtitle}>{t.trialPopupSubtitle}</Text>
-              
-              <TouchableOpacity activeOpacity={0.8} style={styles.trialPopupBtn} onPress={handleStartTrial}>
-                <LinearGradient colors={['#FF007F', '#7000FF']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.trialPopupBtnGradient}>
-                  <Text style={styles.trialPopupBtnText}>{t.trialPopupBtn}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.trialPopupCloseBtn} onPress={() => setDismissedTrialPopup(true)}>
-                <Text style={styles.trialPopupCloseText}>{t.trialPopupClose}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-
         <Modal visible={isLimitModalVisible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.limitModalCard}>
@@ -569,25 +545,26 @@ export default function ChatScreen() {
               <Text style={styles.limitModalTitle}>{t.limitAlertTitle}</Text>
               <Text style={styles.limitModalSubtitle}>{t.limitReached(currentPlan)}</Text>
               
-              {/* 🌟 תיקון: הכפתור החדש לצפייה בפרסומת מתגמלת (מופיע מעל השדרוג) */}
-              <TouchableOpacity 
-                activeOpacity={0.8} 
-                style={[styles.trialPopupBtn, { marginBottom: 15, borderWidth: 1, borderColor: '#00e5ff', backgroundColor: 'rgba(0, 229, 255, 0.05)' }]}
-                onPress={() => {
-                  if (isAdLoaded) {
-                    rewardedAd.show();
-                  } else {
-                    Alert.alert('Loading', 'Ad is still loading. Please make sure you have internet connection and try again in a few seconds.');
-                  }
-                }}
-              >
-                <View style={[styles.trialPopupBtnGradient, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 }]}>
-                  <Ionicons name="play-circle" size={22} color="#00e5ff" />
-                  <Text style={[styles.trialPopupBtnText, { color: '#00e5ff' }]}>
-                    {isAdLoaded ? "Watch Ad for 1 Free Message" : "Loading Ad..."}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              {canWatchAd && (
+                <TouchableOpacity 
+                  activeOpacity={0.8} 
+                  style={[styles.trialPopupBtn, { marginBottom: 15, borderWidth: 1, borderColor: '#00e5ff', backgroundColor: 'rgba(0, 229, 255, 0.05)' }]}
+                  onPress={() => {
+                    if (isAdLoaded) {
+                      rewardedAd.show();
+                    } else {
+                      Alert.alert('Loading', 'Ad is still loading. Please make sure you have internet connection and try again in a few seconds.');
+                    }
+                  }}
+                >
+                  <View style={[styles.trialPopupBtnGradient, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 }]}>
+                    <Ionicons name="play-circle" size={22} color="#00e5ff" />
+                    <Text style={[styles.trialPopupBtnText, { color: '#00e5ff' }]}>
+                      {isAdLoaded ? adButtonText : "Loading Ad..."}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity 
                 activeOpacity={0.8} 
@@ -598,12 +575,15 @@ export default function ChatScreen() {
                 }}
               >
                 <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.trialPopupBtnGradient}>
-                  <Text style={styles.trialPopupBtnText}>{t.upgradeNow}</Text>
+                  <Text style={styles.trialPopupBtnText}>
+                    {isFreePlan && !canWatchAd ? (t as any).getMoreMessages : (t as any).upgradeNow}
+                  </Text>
                 </LinearGradient>
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.trialPopupCloseBtn} onPress={() => setIsLimitModalVisible(false)}>
-                <Text style={styles.limitCancelText}>{t.cancel}</Text>
+                {/* 🌟 שינוי הטקסט של הביטול ל"אולי אחר כך" אם יש פרסומות */}
+                <Text style={styles.limitCancelText}>{canWatchAd ? (t as any).maybeLater : t.cancel}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -641,18 +621,40 @@ const styles = StyleSheet.create({
   botBubbleWrapper: { alignSelf: 'flex-start' },
   paywallTrapOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: 'transparent' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  trialPopupCard: { backgroundColor: '#0a0026', width: '100%', borderRadius: 25, padding: 25, alignItems: 'center', borderWidth: 1, borderColor: '#ff00cc', shadowColor: '#ff00cc', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 10 },
-  trialIconWrapper: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255, 0, 204, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#ff00cc' },
-  trialPopupTitle: { color: '#ffffff', fontSize: 24, fontWeight: '900', textAlign: 'center', marginBottom: 10 },
-  trialPopupSubtitle: { color: '#aaaaaa', fontSize: 15, textAlign: 'center', marginBottom: 30, lineHeight: 22 },
   trialPopupBtn: { width: '100%', borderRadius: 15, overflow: 'hidden', marginBottom: 20 },
   trialPopupBtnGradient: { paddingVertical: 16, alignItems: 'center' },
   trialPopupBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold', letterSpacing: 0.5 },
   trialPopupCloseBtn: { padding: 10 },
-  trialPopupCloseText: { color: '#666666', fontSize: 13, fontWeight: 'bold', textDecorationLine: 'underline' },
   limitModalCard: { backgroundColor: '#0a0026', width: '100%', borderRadius: 25, padding: 25, alignItems: 'center', borderWidth: 1, borderColor: '#8a2be2', shadowColor: '#8a2be2', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 15, elevation: 8 },
   limitIconWrapper: { width: 70, height: 70, borderRadius: 35, backgroundColor: 'rgba(138, 43, 226, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#8a2be2' },
   limitModalTitle: { color: '#ffffff', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 },
   limitModalSubtitle: { color: '#aaaaaa', fontSize: 15, textAlign: 'center', marginBottom: 25, lineHeight: 22 },
-  limitCancelText: { color: '#888888', fontSize: 15, fontWeight: 'bold' }
+  limitCancelText: { color: '#888888', fontSize: 15, fontWeight: 'bold' },
+  
+  // עיצוב לכפתור האייקון המרחף מעל שורת ההקלדה
+  floatingAdBtn: {
+    position: 'absolute',
+    top: -45, 
+    alignSelf: 'center',
+    borderRadius: 20,
+    elevation: 5,
+    shadowColor: '#00e5ff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    zIndex: 60,
+  },
+  floatingAdGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 8,
+    borderRadius: 20,
+  },
+  floatingAdText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 13,
+  }
 });

@@ -7,7 +7,7 @@ export const TRANSLATIONS = {
     attachTitle: "Attach File", attachSubtitle: "Where would you like to upload from?", camera: "Camera ", gallery: "Gallery ",
     
     aiError: "Sorry, I encountered an error. Don't worry, your credit was not used. Please try again.",
-    rateLimitChatError: "Message limit reached 🛑. Invite 5 friends to get free solutions, or upgrade to Premium!", // 🌟 הוספנו כאן!
+    rateLimitChatError: "Message limit reached 🛑. Invite 5 friends to get free solutions, or upgrade to Premium!",
     
     profileBack: "Back", profileStatus: "Account Status", profilePro: "Active PRO Subscription", profileLeft: "Messages left in bank", profileStore: "Store & Upgrades", profileLogout: "Sign Out", profileFreePlan: "Free Tier", profileSettings: "Settings", profileLang: "Language",
     disclaimer: "FIXRA is an AI and can make mistakes.",
@@ -23,20 +23,21 @@ export const TRANSLATIONS = {
     lockedPlaceholder: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly') || p.includes('onetime')) return "Message limit reached ⏳ (Tap to unlock)";
-      return "Daily limit reached ⏳ (Tap to unlock)";
+      return "Message limit reached ⏳ (Tap to unlock)";
     },
 
     limitReached: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly')) return "You've reached your 50 messages limit for this month 😕";
       if (p.includes('onetime')) return "You've used all 50 messages from your pack 😕";
-      return "You've reached your free limit for the next 24 hours 😕";
+      return "You have used all your free messages 😕";
     },
 
-    trialPopupTitle: "Out of Free Solves! 🛑",
-    trialPopupSubtitle: "But wait... take 1 FREE Premium Message on us to experience the real power of FIXRA.",
-    trialPopupBtn: "🎁 Claim Free Premium Message",
-    trialPopupClose: "No thanks, I'll wait 24 hours"
+    watchAdForPro: "Watch Ad for 1 PRO Message",
+    watchAdForPremium: "Watch Ad for 1 PREMIUM Message",
+    getMoreMessages: "Get More Messages",
+    maybeLater: "Maybe Later",
+    adIconText: "Unlock Message"
   },
   Hebrew: {
     placeholder: "יש לך שאלה?...", send: "שלח", 
@@ -46,7 +47,7 @@ export const TRANSLATIONS = {
     attachTitle: "הוספת קובץ", attachSubtitle: "מאיפה תרצה להעלות?", camera: "מצלמה ", gallery: "גלריה ",
     
     aiError: "מצטער, נתקלתי בשגיאה ברשת. אל דאגה, לא ירד לך קרדיט מהחשבון. אנא נסה שוב.",
-    rateLimitChatError: "מכסת ההודעות שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל פתרונות חינם, או שדרג לפרימיום!", // 🌟 הוספנו כאן!
+    rateLimitChatError: "מכסת ההודעות שלך הסתיימה 🛑. הזמן 5 חברים כדי לקבל פתרונות חינם, או שדרג לפרימיום!",
 
     profileBack: "חזור לצ'אט", profileStatus: "סטטוס החשבון", profilePro: "מנוי PRO פעיל", profileLeft: "הודעות שנותרו בבנק", profileStore: "חנות ושדרוגים", profileLogout: "התנתק מהחשבון", profileFreePlan: "מסלול חינמי", profileSettings: "הגדרות", profileLang: "שפת הממשק",
     disclaimer: "FIXRA מבוסס על בינה מלאכותית ועלול לטעות.",
@@ -62,20 +63,21 @@ export const TRANSLATIONS = {
     lockedPlaceholder: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly') || p.includes('onetime')) return "מכסת ההודעות הסתיימה ⏳ (לחץ לשדרוג)";
-      return "המכסה היומית הסתיימה ⏳ (לחץ לשדרוג)";
+      return "מכסת ההודעות הסתיימה ⏳ (לחץ לשדרוג)";
     },
 
     limitReached: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly')) return "הגעת למכסת ה-50 הודעות שלך לחודש זה 😕";
       if (p.includes('onetime')) return "ניצלת את כל 50 ההודעות מחבילת הפרו שלך 😕";
-      return "הגעת למכסת ה-3 הודעות שלך ל-24 שעות הקרובות 😕";
+      return "ניצלת את כל ההודעות החינמיות שלך 😕";
     },
 
-    trialPopupTitle: "נגמרו לך ההודעות להיום! 🛑",
-    trialPopupSubtitle: "אבל רגע... קח הודעת PREMIUM אחת במתנה כדי לראות את הכוח האמיתי של המערכת.",
-    trialPopupBtn: "🎁 פתח הודעת פרימיום עכשיו",
-    trialPopupClose: "לא תודה, אני אעדיף לחכות 24 שעות"
+    watchAdForPro: "צפה בפרסומת להודעת PRO",
+    watchAdForPremium: "צפה בפרסומת להודעת PREMIUM",
+    getMoreMessages: "לקבלת הודעות נוספות לחץ כאן",
+    maybeLater: "אולי אחר כך",
+    adIconText: "פתיחת הודעה נוספת"
   },
   Russian: {
     placeholder: "Есть вопрос?...", send: "Отправить", 
@@ -85,7 +87,7 @@ export const TRANSLATIONS = {
     attachTitle: "Прикрепить файл", attachSubtitle: "Откуда вы хотите загрузить?", camera: "Камера ", gallery: "Галерея ",
     
     aiError: "Извините, произошла ошибка. Не волнуйтесь, ваш кредит не был списан. Пожалуйста, попробуйте еще раз.",
-    rateLimitChatError: "Лимит сообщений исчерпан 🛑. Пригласите 5 друзей, чтобы получить бесплатные решения, или перейдите на Premium!", // 🌟 הוספנו כאן!
+    rateLimitChatError: "Лимит сообщений исчерпан 🛑. Пригласите 5 друзей, чтобы получить бесплатные решения, или перейдите на Premium!",
 
     profileBack: "Назад", profileStatus: "Статус аккаунта", profilePro: "Активная PRO подписка", profileLeft: "Осталось сообщений", profileStore: "Магазин и улучшения", profileLogout: "Выйти", profileFreePlan: "Бесплатный тариф", profileSettings: "Настройки", profileLang: "Язык",
     disclaimer: "FIXRA работает на базе ИИ и может допускать ошибки.",
@@ -101,20 +103,21 @@ export const TRANSLATIONS = {
     lockedPlaceholder: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly') || p.includes('onetime')) return "Лимит сообщений исчерпан ⏳ (Нажмите)";
-      return "Дневной лимит исчерпан ⏳ (Нажмите)";
+      return "Лимит сообщений исчерпан ⏳ (Нажмите)";
     },
 
     limitReached: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly')) return "Вы исчерпали лимит в 50 сообщений на этот месяц 😕";
       if (p.includes('onetime')) return "Вы использовали все 50 сообщений из вашего пакета 😕";
-      return "Вы исчерпали лимит на следующие 24 часа 😕";
+      return "Вы использовали все бесплатные сообщения 😕";
     },
 
-    trialPopupTitle: "Бесплатные решения закончились! 🛑",
-    trialPopupSubtitle: "Но подождите... возьмите 1 БЕСПЛАТНОЕ Premium сообщение, чтобы увидеть реальную мощь.",
-    trialPopupBtn: "🎁 Получить Premium сообщение",
-    trialPopupClose: "Нет, спасибо, я подожду 24 часа"
+    watchAdForPro: "Смотреть рекламу для сообщения PRO",
+    watchAdForPremium: "Смотреть рекламу для сообщения PREMIUM",
+    getMoreMessages: "Получить больше сообщений",
+    maybeLater: "Может позже",
+    adIconText: "Разблокировать сообщение"
   },
   Arabic: {
     placeholder: "لديك سؤال؟...", send: "إرسال", 
@@ -124,7 +127,7 @@ export const TRANSLATIONS = {
     attachTitle: "إرفاق ملف", attachSubtitle: "من أين تريد الرفع؟", camera: "كاميرا ", gallery: "معرض الصور ",
     
     aiError: "عذراً، حدث خطأ. لا تقلق، لم يتم خصم أي رصيد منك. يرجى المحاولة مرة أخرى.",
-    rateLimitChatError: "لقد وصلت إلى حد الرسائل 🛑. قم بدعوة 5 أصدقاء للحصول على حلول مجانية، أو قم بالترقية إلى Premium!", // 🌟 הוספנו כאן!
+    rateLimitChatError: "لقد وصلت إلى حد الرسائل 🛑. قم بدعوة 5 أصدقاء للحصول على حلول مجانية، أو قم بالترقية إلى Premium!",
 
     profileBack: "رجوع", profileStatus: "حالة الحساب", profilePro: "اشتراك PRO نشط", profileLeft: "الرسائل المتبقية", profileStore: "المتجر والترقيات", profileLogout: "تسجيل خروج", profileFreePlan: "الباقة المجانية", profileSettings: "الإعدادات", profileLang: "اللغة",
     disclaimer: "يعتمد FIXRA على الذكاء الاصطناعي وقد يرتكب أخطاء.",
@@ -140,20 +143,21 @@ export const TRANSLATIONS = {
     lockedPlaceholder: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly') || p.includes('onetime')) return "انتهى رصيد الرسائل ⏳ (اضغط للترقية)";
-      return "تم الوصول للحد اليومي ⏳ (اضغط)";
+      return "انتهى رصيد الرسائل ⏳ (اضغط)";
     },
 
     limitReached: (plan: string) => {
       const p = String(plan || '').toLowerCase();
       if (p.includes('monthly')) return "لقد وصلت إلى حد الـ 50 رسالة الخاص بك لهذا الشهر 😕";
       if (p.includes('onetime')) return "لقد استخدمت جميع الرسائل الـ 50 من باقتك 😕";
-      return "لقد وصلت إلى الحد المجاني لمدة 24 ساعة 😕";
+      return "لقد استخدمت جميع رسائلك المجانية 😕";
     },
 
-    trialPopupTitle: "نفدت الرسائل المجانية! 🛑",
-    trialPopupSubtitle: "لكن انتظر... خذ رسالة Premium مجانية واحدة لترى القوة الحقيقية لـ FIXRA.",
-    trialPopupBtn: "🎁 احصل على رسالة Premium",
-    trialPopupClose: "لا شكراً، سأنتظر 24 ساعة"
+    watchAdForPro: "شاهد إعلان لرسالة PRO",
+    watchAdForPremium: "شاهد إعلان لرسالة PREMIUM",
+    getMoreMessages: "احصل على المزيد من الرسائل",
+    maybeLater: "ربما لاحقاً",
+    adIconText: "فتح رسالة إضافية"
   }
 };
 
