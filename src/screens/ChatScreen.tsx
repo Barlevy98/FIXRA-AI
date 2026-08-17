@@ -103,7 +103,6 @@ export default function ChatScreen() {
   const slideAnim = useRef(new Animated.Value(Dimensions.get('window').width)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // 🌟 התיקון הקריטי למניעת Stale Closure בפרסומות 🌟
   const grantRewardRef = useRef(grantRewardMessage);
   useEffect(() => {
     grantRewardRef.current = grantRewardMessage;
@@ -117,9 +116,7 @@ export default function ChatScreen() {
     const unsubscribeEarned = rewardedAd.addAdEventListener(
       RewardedAdEventType.EARNED_REWARD,
       reward => {
-        // 🌟 תמיד משתמשים בפונקציה העדכנית מהרפרנס 🌟
         grantRewardRef.current();
-        setIsLimitModalVisible(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
         setIsAdLoaded(false);
@@ -299,9 +296,11 @@ export default function ChatScreen() {
     }
   };
 
+  // 🌟 גם באפליקציה אנחנו מוודאים זיהוי פשוט ובטוח כדי שהמצלמה תפתח תמיד למי שהרוויח פרסומת
   const enforceMediaTierLimit = () => {
-    const isPro = effectivePlan?.startsWith('PRO') || effectivePlan === 'PREMIUM';
-    if (!isPro && effectivePlan !== 'PREMIUM') {
+    const planLower = effectivePlan ? effectivePlan.toLowerCase() : '';
+    const isPro = planLower.includes('pro') || planLower.includes('premium');
+    if (!isPro) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert(
         "Upgrade Required", 
@@ -317,7 +316,8 @@ export default function ChatScreen() {
   };
 
   const enforceVideoTierLimit = (assetType: string) => {
-    if (assetType === 'video' && effectivePlan !== 'PREMIUM') {
+    const planLower = effectivePlan ? effectivePlan.toLowerCase() : '';
+    if (assetType === 'video' && !planLower.includes('premium')) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       Alert.alert(
         "Premium Required", 
@@ -557,7 +557,11 @@ export default function ChatScreen() {
                   style={[styles.trialPopupBtn, { marginBottom: 15, borderWidth: 1, borderColor: '#00e5ff', backgroundColor: 'rgba(0, 229, 255, 0.05)' }]}
                   onPress={() => {
                     if (isAdLoaded) {
-                      rewardedAd.show();
+                      // הסגירה ששמנו מראש מונעת את המסך הקפוא!
+                      setIsLimitModalVisible(false);
+                      setTimeout(() => {
+                        rewardedAd.show();
+                      }, 500);
                     } else {
                       Alert.alert('Loading', 'Ad is still loading. Please make sure you have internet connection and try again in a few seconds.');
                     }

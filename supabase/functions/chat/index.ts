@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
         serverValidatedPlan = profile.current_plan || 'Free';
         const dbLimit = profile.cycle_limit || 1;
 
-        // 🌟 סודות הפרסומות - מעניקים טעימת יכולות מבלי לשנות את סוג המנוי בבסיס
+        // 🌟 הפרדה מוחלטת: מהי התוכנית לחיוב מול מהן היכולות שניתנו בטעימה
         let effectiveCapabilities = serverValidatedPlan;
         if (serverValidatedPlan.toLowerCase() === 'free') {
             if (dbLimit === 2) {
@@ -151,17 +151,16 @@ Deno.serve(async (req) => {
             }
         }
 
-        const billingPlanLower = serverValidatedPlan.toLowerCase(); // החיוב האמיתי
-        const capabilitiesLower = effectiveCapabilities.toLowerCase(); // היכולות בפועל להרצה זו
+        const billingPlanLower = serverValidatedPlan.toLowerCase(); // תוכנית החיוב האמיתית (מנהלת את החסימות)
+        const capabilitiesLower = effectiveCapabilities.toLowerCase(); // היכולות לאותה הודעה (מצלמה, וידאו, מודל כבד)
 
-        // מדליקים יכולות לפי ה"טעימה" שהוענקה
         isActuallyPremium = capabilitiesLower.includes('premium');
         isActuallyPro = isActuallyPremium || profile.is_pro || capabilitiesLower.includes('pro');
         const isOnetime = billingPlanLower === 'pro_onetime' || billingPlanLower.includes('onetime') || billingPlanLower.includes('חד פעמי');
 
-        limit = dbLimit;
+        limit = dbLimit; // המכסה הקובעת היא תמיד זו מהדאטה-בייס
 
-        // 🌟 חוקי החסימות נקבעים אך ורק על פי תוכנית החיוב האמיתית (Free)
+        // 🌟 חוקי האיפוס והחסימות נקבעים אך ורק לפי תוכנית החיוב (billingPlan)
         if (billingPlanLower.includes('premium')) {
           cycleMs = 2592000000;
         } else if (billingPlanLower.includes('pro')) {
@@ -171,7 +170,7 @@ Deno.serve(async (req) => {
             cycleMs = 2592000000;
           }
         } else {
-          // משתמש Free אמיתי - גם אם הוא ראה פרסומת, הוא מקבל חסימה מוחלטת ללא איפוס!
+          // משתמש Free אמיתי - מקבל חסימה מוחלטת (Hard Limit) ללא איפוס יומי לעולם!
           cycleMs = 86400000;
           isTotalLimit = true;
         }
@@ -204,7 +203,6 @@ Deno.serve(async (req) => {
           const activeCount = isNewCycle ? 0 : currentCycleCount;
           
           if (activeCount >= limit && bonus <= 0) {
-            // הודעות גיבוי רלוונטיות רק למנויי פרו אמיתיים
             if (billingPlanLower === 'pro_monthly') {
                const fbStart = profile.fallback_start_date || 0;
                const fbUsed = (now - fbStart >= 86400000) ? 0 : (profile.fallback_used_messages || 0);
@@ -416,7 +414,6 @@ To reject, return exactly this JSON:
       if (aiResponseJSON.fextralifeQuery) allAvailableLinks.push({ type: 'fextralife', data: { title: "⚔️ Fextralife Boss Guide", url: `https://www.google.com/search?q=${encodeURIComponent('site:fextralife.com ' + aiResponseJSON.fextralifeQuery)}&udm=14`, thumbnail: "https://fextralife.com/wp-content/uploads/2021/05/fextralife-logo-150x150.png" } });
     }
 
-    // 🌟 חלוקת הקישורים נקבעת גם היא על פי ה"טעימה" המוענקת
     let allowedLinksCount = isActuallyPremium ? 10 : (isActuallyPro ? 3 : 1);
     let finalLinks: any[] = [];
 

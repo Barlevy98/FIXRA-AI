@@ -170,21 +170,21 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     setLifetimeMessages(prev => prev + 1);
   };
 
-  // 🌟 התיקון לספירת הפרסומות: שימוש ב-Callback מדויק למניעת דריסה
+  // 🌟 הענקת הפרס עוברת בצורה נקייה וסדרתית (מונע את המצב שהשרת "לא מספיק" להתעדכן)
   const grantRewardMessage = async () => {
-    setCycleLimit(prevLimit => {
-      const newLimit = prevLimit + 1;
-      
-      if (user?.id) {
-        getToken({ template: 'supabase' }).then(token => {
-          if (token) {
-            updateSubscriptionData(token, user.id, { cycle_limit: newLimit });
-          }
-        }).catch(e => console.error("Error saving rewarded limit:", e));
+    const newLimit = cycleLimit + 1;
+    setCycleLimit(newLimit); 
+    
+    if (user?.id) {
+      try {
+        const token = await getToken({ template: 'supabase' });
+        if (token) {
+          await updateSubscriptionData(token, user.id, { cycle_limit: newLimit });
+        }
+      } catch (e) {
+        console.error("Error saving rewarded limit:", e);
       }
-      
-      return newLimit;
-    });
+    }
   };
 
   const purchasePackage = async (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => {
@@ -289,9 +289,10 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     calculatedHasReachedLimit = cycleUsedMessages >= cycleLimit;
   }
 
-  // 🌟 לוגיקת המעבר (המשפך) החדשה והפשוטה
+  // 🌟 תיקון רגישות לאותיות שמנע כניסה חלקה ליכולות PRO באפליקציה (שחרור המצלמה)
   let effectivePlan = currentPlan;
-  if (currentPlan === 'Free') {
+  const safePlan = currentPlan ? currentPlan.toLowerCase() : 'free';
+  if (safePlan === 'free') {
     if (cycleLimit === 2) effectivePlan = 'PRO_monthly';
     else if (cycleLimit >= 3) effectivePlan = 'PREMIUM';
   }
