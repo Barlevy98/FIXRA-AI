@@ -318,7 +318,7 @@ To reject, return exactly this JSON:
 
         } else {
            // 🌟 התיקון למודל הפעיל של Groq
-           const groqModel = isActuallyPremium ? "llama-3.3-70b-versatile" : "llama-3.1-8b-instant";
+           const groqModel = isActuallyPremium ? "llama3-70b-8192" : "llama3-8b-8192";
            providerUsed = isActuallyPremium ? "Groq (Premium VIP)" : (isActuallyPro ? "Groq (Pro Speed)" : "Groq (Free)");
            
            const groqMessages = [{ role: "system", content: systemInstruction }, ...history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text })), { role: "user", content: finalUserQuery }];
