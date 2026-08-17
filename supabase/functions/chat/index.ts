@@ -44,7 +44,6 @@ async function getCachedOrFetch(supabase: any, cacheKey: string, fetchFn: () => 
     memCache.set(cacheKey, freshData);
     if (memCache.size > 500) memCache.clear(); 
     if (supabase) {
-      // 🌟 התיקון הקריטי: הוספנו await כדי שהשמירה לא תיהרג על ידי השרת!
       await supabase.from('search_cache').upsert({ query_key: cacheKey, result_data: freshData, created_at: Date.now() });
     }
   }
@@ -232,13 +231,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // מגדירים את הודעת הדחייה לפי השפה, כשאנגלית היא ברירת המחדל המוחלטת
     const rejectionMessage = language === 'Hebrew' ? "אני עוזר AI שמתמחה במשחקי וידאו בלבד 🎮." :
     language === 'Russian' ? "Я ИИ-помощник, специализирующийся только на видеоиграх 🎮." :
     language === 'Arabic' ? "أنا مساعد ذكاء اصطناعي متخصص في ألعاب الفيديو فقط 🎮." :
     "I am an AI assistant specializing in video games only 🎮.";
 
-let systemInstruction = adminSettings?.system_prompt || `You are an ELITE gaming AI assistant and video analysis expert.
+    let systemInstruction = adminSettings?.system_prompt || `You are an ELITE gaming AI assistant and video analysis expert.
 CRITICAL JSON RULES: Output ONLY valid raw JSON. No markdown.
 ANTI-HALLUCINATION & ELITE GAMER LOGIC:
 0. YOU ARE A GAMING ASSISTANT ONLY. If the user asks about ANYTHING outside of video games, you MUST reject it.
@@ -289,14 +287,16 @@ To reject, return exactly this JSON:
     let attemptCount = 0;
     const MAX_RETRIES = 2;
     let lastError = null;
+    let forceGeminiFallback = false; // 🌟 דגל הגיבוי החדש
 
     while (attemptCount < MAX_RETRIES && !rawParsed) {
       attemptCount++;
       let responseText = "";
 
       try {
-        if (hasMedia) {
-          providerUsed = "Gemini-2.5-Flash (Media)";
+        // 🌟 אם יש תמונה, או שזיהינו קריסה של Groq והדלקנו את הגיבוי
+        if (hasMedia || forceGeminiFallback) {
+          providerUsed = forceGeminiFallback ? "Gemini-2.5-Flash (Fallback)" : "Gemini-2.5-Flash (Media)";
           const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
           const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction, generationConfig: { responseMimeType: "application/json" } });
           
@@ -306,9 +306,9 @@ To reject, return exactly this JSON:
           const chat = model.startChat({ history: geminiHistory });
           const promptParts: any[] = [];
           
-          if (media.type === 'image') {
+          if (media && media.type === 'image') {
              mediaArray.forEach((img: string) => promptParts.push({ inlineData: { data: img, mimeType: 'image/jpeg' } }));
-          } else if (media.type === 'video') {
+          } else if (media && media.type === 'video') {
              promptParts.push({ inlineData: { data: mediaArray[0], mimeType: 'video/mp4' } });
           }
           
@@ -317,9 +317,9 @@ To reject, return exactly this JSON:
           responseText = result.response.text();
 
         } else {
-           // 🌟 התיקון למודל הפעיל של Groq
-           const groqModel = isActuallyPremium ? "llama3-70b-8192" : "llama3-8b-8192";
-           providerUsed = isActuallyPremium ? "Groq (Premium VIP)" : (isActuallyPro ? "Groq (Pro Speed)" : "Groq (Free)");
+           // 🌟 מודלים חדשים ומהירים/כבדים מ-Groq, בדיוק לפי האימייל שלהם
+           const groqModel = isActuallyPremium ? "gpt-oss-120b" : "qwen-3.6-27b";
+           providerUsed = isActuallyPremium ? "Groq (Premium 120B)" : (isActuallyPro ? "Groq (Pro 27B)" : "Groq (Free 27B)");
            
            const groqMessages = [{ role: "system", content: systemInstruction }, ...history.map((msg: any) => ({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.text })), { role: "user", content: finalUserQuery }];
            const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -348,6 +348,12 @@ To reject, return exactly this JSON:
         lastError = err;
         console.warn(`[AI ERROR] Attempt ${attemptCount} failed: ${err.message}`);
         rawParsed = null; 
+        
+        // 🌟 הפעלת ה-Fallback ל-Gemini אם Groq קרס בניסיון הראשון
+        if (attemptCount === 1 && !hasMedia) {
+           forceGeminiFallback = true;
+           console.log("[FALLBACK] Groq failed. Switching to Gemini for the next attempt...");
+        }
       }
     }
 
@@ -397,7 +403,6 @@ To reject, return exactly this JSON:
       if (aiResponseJSON.fextralifeQuery) allAvailableLinks.push({ type: 'fextralife', data: { title: "⚔️ Fextralife Boss Guide", url: `https://www.google.com/search?q=${encodeURIComponent('site:fextralife.com ' + aiResponseJSON.fextralifeQuery)}&udm=14`, thumbnail: "https://fextralife.com/wp-content/uploads/2021/05/fextralife-logo-150x150.png" } });
     }
 
-    // 🌟 התיקון השני: סינון קפדני ליוטיוב בלבד עבור משתמשים חינמיים!
     let allowedLinksCount = serverValidatedPlan === 'PREMIUM' ? 10 : (serverValidatedPlan?.startsWith('PRO') ? 3 : 1);
     let finalLinks: any[] = [];
 
