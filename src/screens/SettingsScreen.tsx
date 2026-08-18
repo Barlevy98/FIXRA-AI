@@ -184,7 +184,7 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
               <Text style={styles.logoutButtonText}>{t.profileLogout}</Text>
             </TouchableOpacity>
 
-            <Text style={styles.versionFooter}>FIXRA AI - Version 1.0.0{'\n'}Made for Gamers</Text>
+            <Text style={styles.versionFooter}>FIXRA AI - Version 1.1{'\n'}Made for Gamers</Text>
 
           </ScrollView>
 
