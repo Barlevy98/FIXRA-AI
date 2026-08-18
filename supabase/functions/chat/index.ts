@@ -140,27 +140,28 @@ Deno.serve(async (req) => {
       if (profile) {
         serverValidatedPlan = profile.current_plan || 'Free';
         const dbLimit = profile.cycle_limit || 1;
+        const lifetime = profile.lifetime_messages || 0; // כמה הודעות המשתמש שלח בחייו
 
-        // 🌟 הפרדה מוחלטת: מהי התוכנית לחיוב מול מהן היכולות שניתנו בטעימה
+        // 🌟 סודות הפרסומות - מעניקים טעימה לפי השלב במשפך מבלי לשנות את המנוי
         let effectiveCapabilities = serverValidatedPlan;
         if (serverValidatedPlan.toLowerCase() === 'free') {
-            if (dbLimit === 2) {
-                effectiveCapabilities = 'PRO_monthly'; // טעימת פרו
-            } else if (dbLimit >= 3) {
-                effectiveCapabilities = 'PREMIUM'; // טעימת פרימיום
+            if (lifetime === 1) {
+                effectiveCapabilities = 'PRO_monthly'; // טעימת פרו (אחרי ששלח הודעה 1 חינמית)
+            } else if (lifetime >= 2) {
+                effectiveCapabilities = 'PREMIUM'; // טעימת פרימיום (אחרי ששלח 2 הודעות ומעלה)
             }
         }
 
-        const billingPlanLower = serverValidatedPlan.toLowerCase(); // תוכנית החיוב האמיתית (מנהלת את החסימות)
-        const capabilitiesLower = effectiveCapabilities.toLowerCase(); // היכולות לאותה הודעה (מצלמה, וידאו, מודל כבד)
+        const billingPlanLower = serverValidatedPlan.toLowerCase(); 
+        const capabilitiesLower = effectiveCapabilities.toLowerCase(); 
 
         isActuallyPremium = capabilitiesLower.includes('premium');
         isActuallyPro = isActuallyPremium || profile.is_pro || capabilitiesLower.includes('pro');
         const isOnetime = billingPlanLower === 'pro_onetime' || billingPlanLower.includes('onetime') || billingPlanLower.includes('חד פעמי');
 
-        limit = dbLimit; // המכסה הקובעת היא תמיד זו מהדאטה-בייס
+        limit = dbLimit; // לחינמי זה תמיד יישאר 1!
 
-        // 🌟 חוקי האיפוס והחסימות נקבעים אך ורק לפי תוכנית החיוב (billingPlan)
+        // חוקי האיפוס והחסימות נקבעים אך ורק לפי תוכנית החיוב (billingPlan)
         if (billingPlanLower.includes('premium')) {
           cycleMs = 2592000000;
         } else if (billingPlanLower.includes('pro')) {
@@ -170,7 +171,7 @@ Deno.serve(async (req) => {
             cycleMs = 2592000000;
           }
         } else {
-          // משתמש Free אמיתי - מקבל חסימה מוחלטת (Hard Limit) ללא איפוס יומי לעולם!
+          // 🌟 משתמש חינמי תמיד יקבל חסימה מוחלטת (בלי איפוס יומי), ההצלה שלו היא רק הבונוס מהפרסומות
           cycleMs = 86400000;
           isTotalLimit = true;
         }
@@ -196,6 +197,7 @@ Deno.serve(async (req) => {
         }
 
         if (isTotalLimit) {
+          // 🌟 החסימה לא תופעל אם יש לו מטבע בונוס (bonus > 0)! 
           if (currentCycleCount >= limit && bonus <= 0) hasQuota = false;
         } else {
           const lastReset = profile.cycle_start_date || 0;

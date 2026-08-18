@@ -56,7 +56,8 @@ export const markTutorialAsSeen = async (clerkToken: string, userId: string) => 
 
 export const getUserSubscriptionData = async (clerkToken: string, userId: string) => {
   const supabase = getAuthenticatedSupabase(clerkToken);
-  const { data, error } = await supabase.from('user_profiles').select('lifetime_messages, cycle_limit, current_plan, is_pro, cycle_used_messages, cycle_start_date, has_used_premium_trial, fallback_used_messages, fallback_start_date').eq('user_id', userId).single();
+  // 🌟 הוספנו את bonus_solves_balance לתוך רשימת ה-select!
+  const { data, error } = await supabase.from('user_profiles').select('lifetime_messages, cycle_limit, current_plan, is_pro, cycle_used_messages, cycle_start_date, has_used_premium_trial, fallback_used_messages, fallback_start_date, bonus_solves_balance').eq('user_id', userId).single();
   return error && error.code !== 'PGRST116' ? null : data;
 };
 

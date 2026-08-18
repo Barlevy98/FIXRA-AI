@@ -15,6 +15,7 @@ type PaywallContextType = {
   isPro: boolean;
   currentPlan: string; 
   effectivePlan: string; 
+  bonusBalance: number;
   purchasePackage: (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => Promise<void>;
   chatLanguage: string;
   changeLanguage: (lang: string) => Promise<void>;
@@ -36,6 +37,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
   const [lifetimeMessages, setLifetimeMessages] = useState(0);
   const [cycleLimit, setCycleLimit] = useState(1); 
   const [cycleStartDate, setCycleStartDate] = useState(Date.now());
+  const [bonusBalance, setBonusBalance] = useState(0); // 🌟 משתנה חדש למעקב אחר הבונוסים
   
   const [isPro, setIsPro] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<string>('Free'); 
@@ -81,6 +83,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         let limit = data.cycle_limit || 1; 
         let startDate = data.cycle_start_date || now;
         let plan = data.current_plan || 'Free';
+        const bonus = data.bonus_solves_balance || 0;
         
         let fbUsed = data.fallback_used_messages || 0;
         let fbStart = data.fallback_start_date || now;
@@ -88,6 +91,13 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
 
         let updates: any = {};
         let needsUpdate = false;
+
+        // 🌟 תיקון אוטומטי למי שהלימיט שלו השתבש בטסטים הקודמים (מחזיר חינמיים ל-1/1 לנצח)
+        if (plan === 'Free' && limit > 1) {
+           limit = 1;
+           updates.cycle_limit = 1;
+           needsUpdate = true;
+        }
 
         const isOneTime = plan === 'PRO_onetime';
 
@@ -123,6 +133,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         setLifetimeMessages(lifetime);
         setCycleLimit(limit);
         setCycleStartDate(startDate);
+        setBonusBalance(bonus);
         setIsPro(data.is_pro || plan !== 'Free');
         setCurrentPlan(plan);
         
@@ -146,6 +157,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
         setLifetimeMessages(0);
         setCycleLimit(1);
         setCycleStartDate(now);
+        setBonusBalance(0);
         setIsPro(false);
         setCurrentPlan('Free');
         setIsFallbackMode(false);
@@ -165,26 +177,26 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     if (isFallbackMode) {
       setFallbackUsedMessages(prev => prev + 1);
     } else {
-      setCycleUsedMessages(prev => prev + 1);
+      setBonusBalance(prev => {
+         if (prev > 0) return prev - 1;
+         setCycleUsedMessages(c => c + 1);
+         return prev;
+      });
     }
     setLifetimeMessages(prev => prev + 1);
   };
 
-  // 🌟 הענקת הפרס עוברת בצורה נקייה וסדרתית (מונע את המצב שהשרת "לא מספיק" להתעדכן)
+  // 🌟 הענקת הבונוס על הפרסומת מבלי לגעת בלימיט של המשתמש!
   const grantRewardMessage = async () => {
-    const newLimit = cycleLimit + 1;
-    setCycleLimit(newLimit); 
-    
-    if (user?.id) {
-      try {
-        const token = await getToken({ template: 'supabase' });
-        if (token) {
-          await updateSubscriptionData(token, user.id, { cycle_limit: newLimit });
-        }
-      } catch (e) {
-        console.error("Error saving rewarded limit:", e);
+    setBonusBalance(prev => {
+      const newBonus = prev + 1;
+      if (user?.id) {
+        getToken({ template: 'supabase' }).then(token => {
+          if (token) updateSubscriptionData(token, user.id, { bonus_solves_balance: newBonus });
+        });
       }
-    }
+      return newBonus;
+    });
   };
 
   const purchasePackage = async (plan: 'PRO_monthly' | 'PRO_onetime' | 'PREMIUM') => {
@@ -264,6 +276,7 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
     setIsFallbackMode(false);
     setFallbackUsedMessages(0);
     setFallbackStartDate(now);
+    setBonusBalance(0);
     
     if (user?.id) {
        const token = await getToken({ template: 'supabase' });
@@ -276,7 +289,8 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
               cycle_start_date: now,
               has_used_premium_trial: false,
               fallback_used_messages: 0,
-              fallback_start_date: now
+              fallback_start_date: now,
+              bonus_solves_balance: 0
           });
        }
     }
@@ -286,20 +300,21 @@ export const PaywallProvider = ({ children }: { children: React.ReactNode }) => 
   if (currentPlan === 'PRO_monthly' && isFallbackMode) {
     calculatedHasReachedLimit = fallbackUsedMessages >= 2;
   } else {
-    calculatedHasReachedLimit = cycleUsedMessages >= cycleLimit;
+    // 🌟 החסימה לא תופעל אם יש למשתמש מטבעות בונוס!
+    calculatedHasReachedLimit = (cycleUsedMessages >= cycleLimit) && (bonusBalance <= 0);
   }
 
-  // 🌟 תיקון רגישות לאותיות שמנע כניסה חלקה ליכולות PRO באפליקציה (שחרור המצלמה)
+  // 🌟 באפליקציה: פותחים לו את כפתורי המצלמה על סמך הטעימה שהוא מרוויח
   let effectivePlan = currentPlan;
   const safePlan = currentPlan ? currentPlan.toLowerCase() : 'free';
   if (safePlan === 'free') {
-    if (cycleLimit === 2) effectivePlan = 'PRO_monthly';
-    else if (cycleLimit >= 3) effectivePlan = 'PREMIUM';
+    if (lifetimeMessages === 1) effectivePlan = 'PRO_monthly';
+    else if (lifetimeMessages >= 2) effectivePlan = 'PREMIUM';
   }
 
   return (
     <PaywallContext.Provider value={{ 
-      cycleUsedMessages, lifetimeMessages, cycleLimit, cycleStartDate,
+      cycleUsedMessages, lifetimeMessages, cycleLimit, cycleStartDate, bonusBalance,
       hasReachedLimit: calculatedHasReachedLimit, isPro, currentPlan, effectivePlan, purchasePackage,
       chatLanguage, changeLanguage, resetToFree,
       refreshSubscription, incrementLocalCounter,
