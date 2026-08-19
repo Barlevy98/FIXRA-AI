@@ -12,6 +12,7 @@ Your personal AI gaming coach, powered by cutting-edge artificial intelligence t
 
 - **AI-Powered Gameplay Analysis**: Upload screenshots or video gameplay clips for instant AI analysis and personalized improvement tips
 - **Intelligent Chat Assistant**: Get real-time gaming advice powered by advanced AI
+- **Smart Reward Funnel**: Experience PRO and PREMIUM tiers by watching rewarded video ads before hitting a hard paywall
 - **Game Library**: Browse and explore a comprehensive database of games
 - **User Profiles & Settings**: Customize your experience and track your gaming profile
 - **Community Connection**: Connect with other gamers in the community
@@ -27,16 +28,17 @@ Your personal AI gaming coach, powered by cutting-edge artificial intelligence t
 
 - **Frontend Framework**: React Native (Expo)
 - **Language**: TypeScript
-- **AI Engine**: Google Generative AI
+- **AI Engine**: Google Generative AI & Groq
 - **Authentication**: Clerk
 - **Backend**: Supabase
-- **Payment Processing**: RevenueCat
+- **Monetization & Ads**: RevenueCat & Google AdMob
 - **Testing**: Jest + React Native Testing Library
 
 ### Technical Challenges & Solutions
 
 - **Complex Authentication & Database Flow:** Implemented secure user authentication using **Clerk** seamlessly integrated with a **Supabase** backend, utilizing Edge Functions for webhook processing.
 - **AI Integration:** Leveraged **Google Generative AI** to analyze gameplay screenshots and video clips in real-time, providing personalized gaming tips.
+- **Dynamic Reward Funnel & State Management:** Engineered a complex marketing funnel allowing free users to sample premium AI tiers via rewarded ads. Solved critical edge cases including Supabase DB race conditions and iOS modal window hierarchy collisions by decoupling billing plans from dynamic capabilities.
 - **Monetization Architecture:** Built a robust in-app purchase system with **RevenueCat**, handling subscription states and paywall gating efficiently.
 - **Testing & Quality Assurance:** Developed comprehensive unit and component tests using **Jest** and **React Native Testing Library** to ensure high reliability across critical app flows.
 
@@ -60,7 +62,7 @@ Your personal AI gaming coach, powered by cutting-edge artificial intelligence t
 
 ## 📁 Project Structure
 
-```
+```text
 ├── src/
 │   ├── components/          # Reusable UI components
 │   ├── screens/             # App screens
@@ -77,7 +79,6 @@ Your personal AI gaming coach, powered by cutting-edge artificial intelligence t
 │   └── config.toml          # Supabase configuration
 ├── assets/                  # App icons, splash screens, etc.
 └── package.json             # Dependencies and scripts
-```
 
 ---
 
@@ -122,6 +123,7 @@ Tests are located alongside their respective modules:
 - `@clerk/clerk-expo`: Secure user authentication
 - `@supabase/supabase-js`: Backend database and APIs
 - `react-native-purchases`: In-app purchase management
+- `react-native-google-mobile-ads`: Rewarded video ad integration
 - `expo-image-picker`: Photo and video upload functionality
 - `expo-crypto` & `expo-secure-store`: Secure data storage
 
@@ -164,6 +166,6 @@ For support or inquiries, please contact the development team : fixra.partners@g
 
 ---
 
-**Last Updated**: June 2026  
-**Current Version**: 1.0.0  
+**Last Updated**: August 2026  
+**Current Version**: 1.1  
 
