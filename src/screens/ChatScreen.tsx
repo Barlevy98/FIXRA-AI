@@ -20,6 +20,7 @@ import FavoritesScreen from './FavoritesScreen';
 import SettingsScreen from './SettingsScreen';
 import CommunityModal from '../components/CommunityModal'; 
 import GameLibraryModal from '../components/GameLibraryModal'; 
+import LoginScreen from './LoginScreen';
 import { getTranslation } from '../utils/translations';
 
 import { getUserTutorialStatus, markTutorialAsSeen, getUserTosStatus, saveBookmark, getUserBookmarks, syncUserFullName } from '../utils/db'; 
@@ -68,7 +69,7 @@ export default function ChatScreen() {
     chatLanguage, 
     currentPlan,
     effectivePlan,
-    lifetimeMessages, // 🌟 משתמשים בכמות הודעות החיים למשפך 🌟
+    lifetimeMessages,
     grantRewardMessage 
   } = usePaywall();
   
@@ -80,6 +81,10 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const [selectedMedia, setSelectedMedia] = useState<{uri: string, type: 'image' | 'video', base64?: string | string[], thumbnailUri?: string} | null>(null);
   
+  // 🌟 סטייטים לניהול מצב אורח (Deferred Onboarding)
+  const [isAuthModalVisible, setIsAuthModalVisible] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<{ text: string; media: any } | null>(null);
+
   const [bookmarkedMessageIds, setBookmarkedMessageIds] = useState<string[]>([]);
   const [bookmarkedTexts, setBookmarkedTexts] = useState<string[]>([]);
   
@@ -108,6 +113,29 @@ export default function ChatScreen() {
     grantRewardRef.current = grantRewardMessage;
   }, [grantRewardMessage]);
 
+  // 🌟 שליחה אוטומטית של השאלה מיד לאחר סיום ההרשמה (Auto-Submit Draft)
+  useEffect(() => {
+    if (user && pendingDraft) {
+      const draft = pendingDraft;
+      setPendingDraft(null);
+      setIsAuthModalVisible(false);
+
+      (async () => {
+        setInputText('');
+        setSelectedMedia(null);
+        setIsAttachMenuVisible(false);
+        const success = await chatManager.sendMessage(draft.text, draft.media);
+        if (success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
+      })();
+    } else if (user && isAuthModalVisible && !pendingDraft) {
+      setIsAuthModalVisible(false);
+    }
+  }, [user, pendingDraft, isAuthModalVisible]);
+
   useEffect(() => {
     const unsubscribeLoaded = rewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
       setIsAdLoaded(true);
@@ -115,8 +143,8 @@ export default function ChatScreen() {
 
     const unsubscribeEarned = rewardedAd.addAdEventListener(
       RewardedAdEventType.EARNED_REWARD,
-      reward => {
-        grantRewardRef.current();
+      async reward => {
+        await grantRewardRef.current();
         setIsLimitModalVisible(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
@@ -235,7 +263,10 @@ export default function ChatScreen() {
   };
 
   const handleBookmarkMessage = async (msg: MessageType) => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setIsAuthModalVisible(true);
+      return;
+    }
     const isAlreadySaved = bookmarkedMessageIds.includes(msg.id) || (msg.text && bookmarkedTexts.includes(msg.text));
     if (isAlreadySaved) {
       Alert.alert("Already Saved", "This solution is already in your favorites.");
@@ -386,6 +417,17 @@ export default function ChatScreen() {
   const handleSendMessage = async () => {
     if (inputText.trim() === '' && !selectedMedia) return;
     
+    // 🌟 בדיקת אורח: שומרים את השאלה בזיכרון ומקפיצים את מסך ההרשמה
+    if (!user) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setPendingDraft({
+        text: inputText.trim(),
+        media: selectedMedia
+      });
+      setIsAuthModalVisible(true);
+      return;
+    }
+
     if (hasReachedLimit) { 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setIsLimitModalVisible(true);
@@ -423,7 +465,6 @@ export default function ChatScreen() {
   const isFreePlan = currentPlan === 'Free';
   const canWatchAd = isFreePlan && lifetimeMessages < 3;
   
-  // 🌟 כפתור צפיית הפרסומות משתנה בהתאם לכמות ההודעות ההיסטורית 🌟
   let adButtonText = "Watch Ad";
   if (lifetimeMessages === 1) adButtonText = (t as any).watchAdForPro || "Watch Ad for PRO";
   if (lifetimeMessages === 2) adButtonText = (t as any).watchAdForPremium || "Watch Ad for PREMIUM";
@@ -452,11 +493,25 @@ export default function ChatScreen() {
 
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            {user?.imageUrl && (
-              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsProfileVisible(true); }} style={styles.avatarWrapper}>
+            <TouchableOpacity 
+              onPress={() => { 
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
+                if (user) {
+                  setIsProfileVisible(true); 
+                } else {
+                  setIsAuthModalVisible(true);
+                }
+              }} 
+              style={styles.avatarWrapper}
+            >
+              {user?.imageUrl ? (
                 <Image source={{ uri: user.imageUrl }} style={styles.avatar} />
-              </TouchableOpacity>
-            )}
+              ) : (
+                <View style={[styles.avatar, { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(138, 43, 226, 0.3)' }]}>
+                  <Ionicons name="person" size={20} color="#00e5ff" />
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
           <Text style={styles.title}>FIXRA AI</Text>
           <View style={styles.headerRight}>
@@ -562,7 +617,14 @@ export default function ChatScreen() {
                   style={[styles.trialPopupBtn, { marginBottom: 15, borderWidth: 1, borderColor: '#00e5ff', backgroundColor: 'rgba(0, 229, 255, 0.05)' }]}
                   onPress={() => {
                     if (isAdLoaded) {
-                      rewardedAd.show();
+                      setIsLimitModalVisible(false);
+                      setTimeout(() => {
+                        try {
+                          rewardedAd.show();
+                        } catch (err) {
+                          console.log("Error showing ad:", err);
+                        }
+                      }, 500);
                     } else {
                       Alert.alert('Loading', 'Ad is still loading. Please make sure you have internet connection and try again in a few seconds.');
                     }
@@ -598,6 +660,14 @@ export default function ChatScreen() {
             </View>
           </View>
         </Modal>
+
+        {/* 🌟 מסך התחברות קופץ במצב אורח (Modal) */}
+        <LoginScreen 
+          visible={isAuthModalVisible} 
+          onClose={() => {
+            setIsAuthModalVisible(false);
+          }} 
+        />
 
         <GameLibraryModal visible={isGameLibraryVisible} onClose={() => setIsGameLibraryVisible(false)} onSelectGame={handleSelectGame} />
         <PaywallModal visible={isPaywallVisible} onClose={() => setIsPaywallVisible(false)} />

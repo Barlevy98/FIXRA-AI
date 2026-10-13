@@ -2,11 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Platform, I18nManager } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ClerkProvider, SignedIn, SignedOut } from '@clerk/clerk-expo';
+import { ClerkProvider } from '@clerk/clerk-expo';
 import Purchases from 'react-native-purchases';
 
 import ChatScreen from './src/screens/ChatScreen';
-import LoginScreen from './src/screens/LoginScreen';
 import { tokenCache } from './src/utils/tokenCache';
 import { PaywallProvider } from './src/context/PaywallContext';
 import TermsModal from './src/components/TermsModal'; 
@@ -55,20 +54,12 @@ export default function App() {
     <SafeAreaProvider>
       <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
         <StatusBar style="light" />
-        
-        <SignedIn>
-          {isRcReady && (
-            <PaywallProvider>
-              <TermsModal />
-              <ChatScreen />
-            </PaywallProvider>
-          )}
-        </SignedIn>
-        
-        <SignedOut>
-          <LoginScreen />
-        </SignedOut>
-        
+        {isRcReady && (
+          <PaywallProvider>
+            <TermsModal />
+            <ChatScreen />
+          </PaywallProvider>
+        )}
       </ClerkProvider>
     </SafeAreaProvider>
   );
