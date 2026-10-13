@@ -120,13 +120,17 @@ jest.mock('../components/TermsModal', () => ({ __esModule: true, default: () => 
 jest.mock('./SettingsScreen', () => ({ __esModule: true, default: () => null }));
 jest.mock('./FavoritesScreen', () => ({ __esModule: true, default: () => null }));
 jest.mock('../components/CommunityModal', () => ({ __esModule: true, default: () => null }));
+jest.mock('./LoginScreen', () => ({ __esModule: true, default: () => null }));
 
 // ---------------------------------------------------------
 // 4. סביבה, משתמש ותרגומים
 // ---------------------------------------------------------
 jest.mock('@clerk/clerk-expo', () => ({
   useAuth: () => ({ getToken: jest.fn(() => Promise.resolve('mock-token')), isLoaded: true }),
-  useUser: () => ({ user: { id: 'user_123', firstName: 'Bar' }, isLoaded: true })
+  useUser: () => ({ user: { id: 'user_123', firstName: 'Bar' }, isLoaded: true }),
+  useOAuth: () => ({ startOAuthFlow: jest.fn() }),
+  useSignIn: () => ({ signIn: { create: jest.fn() }, setActive: jest.fn(), isLoaded: true }),
+  useSignUp: () => ({ signUp: { create: jest.fn() }, setActive: jest.fn(), isLoaded: true })
 }));
 
 jest.mock('../context/PaywallContext', () => ({
