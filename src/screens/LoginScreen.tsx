@@ -10,7 +10,12 @@ import * as Haptics from 'expo-haptics';
 
 WebBrowser.maybeCompleteAuthSession();
 
-export default function LoginScreen() {
+interface LoginScreenProps {
+  visible?: boolean;
+  onClose?: () => void;
+}
+
+export default function LoginScreen({ visible = true, onClose }: LoginScreenProps) {
   const { startOAuthFlow: startGoogleFlow } = useOAuth({ strategy: 'oauth_google' });
   const { startOAuthFlow: startAppleFlow } = useOAuth({ strategy: 'oauth_apple' });
   
@@ -72,7 +77,7 @@ export default function LoginScreen() {
       regTitle: "Регистрация", regBtn: "Зарегистрироваться", passRules: "Пароль должен содержать минимум 8 символов."
     },
     Arabic: { 
-      title: "FIXRA AI", sub: "عالق؟ Fixra it", login: "المتابعة باستخدام Google", loginApple: "المتابعة باستخدام Apple", email: "البريد الإلكتروني", pass: "كلمة المرور", signIn: "تسجيل الدخول", or: "أو", createAccount: "إنشاء حساب مجاني", 
+      title: "FIXRA AI", sub: "عالق؟ Fixra it", login: "المتابعة باستخدام Google", loginApple: "المتابعة باستخدام Apple", email: "البريد الإلكتروني", pass: "كلمة المرور", signIn: "تسجيل الدخول", or: "أו", createAccount: "إنشاء حساب مجاني", 
       verifyTitle: "تأكيد البريد", verifySub: "أدخل الرمز المرسل للإيميل", codePlaceholder: "رمز التأكيد", verifyBtn: "تأكيد", back: "رجوع",
       regTitle: "إنشاء حساب", regBtn: "تسجيل", passRules: "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل."
     },
@@ -90,7 +95,8 @@ export default function LoginScreen() {
     try {
       const { createdSessionId, setActive } = await startGoogleFlow();
       if (createdSessionId && setActive) {
-        setActive({ session: createdSessionId });
+        await setActive({ session: createdSessionId });
+        if (onClose) onClose();
       }
     } catch (err) {
       console.error('Google OAuth error', err);
@@ -102,7 +108,8 @@ export default function LoginScreen() {
     try {
       const { createdSessionId, setActive } = await startAppleFlow();
       if (createdSessionId && setActive) {
-        setActive({ session: createdSessionId });
+        await setActive({ session: createdSessionId });
+        if (onClose) onClose();
       }
     } catch (err) {
       console.error('Apple OAuth error', err);
@@ -113,7 +120,6 @@ export default function LoginScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!isSignInLoaded) return;
     
-    // ניקוי רווחים נסתרים מההתחלה והסוף של האימייל
     const cleanEmail = email.trim();
 
     if (!cleanEmail || !password) {
@@ -122,7 +128,6 @@ export default function LoginScreen() {
     }
 
     try {
-      // שימוש באימייל הנקי
       const completeSignIn = await signIn.create({ 
         identifier: cleanEmail, 
         password 
@@ -130,16 +135,14 @@ export default function LoginScreen() {
       
       if (completeSignIn.status === 'complete') {
         await setActiveSignIn({ session: completeSignIn.createdSessionId });
+        if (onClose) onClose();
       }
     } catch (err: any) {
       console.error('Email login error', err.errors);
-      
-      // הודעה אחידה וברורה כמו שביקשת, בלי קשר לסוג השגיאה של Clerk
       Alert.alert("Login Failed", "Invalid email or password.");
     }
   };
 
-  // 🌟 פתיחת חלונית ההרשמה
   const openRegisterModal = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setRegEmail('');
@@ -147,7 +150,6 @@ export default function LoginScreen() {
     setShowRegisterModal(true);
   };
 
-  // 🌟 שליחת טופס ההרשמה מתוך החלונית
   const submitRegistration = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (!isSignUpLoaded) return;
@@ -159,8 +161,8 @@ export default function LoginScreen() {
     try {
       await signUp.create({ emailAddress: regEmail, password: regPassword });
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-      setShowRegisterModal(false); // סוגר את ההרשמה
-      setPendingVerification(true); // פותח את האימות
+      setShowRegisterModal(false);
+      setPendingVerification(true);
     } catch (err: any) {
       Alert.alert("Registration Failed", err.errors[0]?.message || "Could not create account.");
     }
@@ -174,6 +176,8 @@ export default function LoginScreen() {
       const completeSignUp = await signUp.attemptEmailAddressVerification({ code });
       if (completeSignUp.status === 'complete') {
         await setActiveSignUp({ session: completeSignUp.createdSessionId });
+        setPendingVerification(false);
+        if (onClose) onClose();
       }
     } catch (err: any) {
       Alert.alert("Verification Failed", err.errors[0]?.message || "Invalid code.");
@@ -190,192 +194,195 @@ export default function LoginScreen() {
   };
 
   return (
-    <LinearGradient colors={['#050012', '#0a0026', '#000000']} style={styles.background}>
-      <SafeAreaView style={styles.container}>
-        
-        <View style={styles.floatingMenuContainer}>
-          <Animated.View style={[styles.floatingBtn, getAnimatedStyle(0)]}>
-            <TouchableOpacity onPress={() => changeLang('English')}><Text style={styles.globeText}>🇺🇸</Text></TouchableOpacity>
-          </Animated.View>
-          <Animated.View style={[styles.floatingBtn, getAnimatedStyle(1)]}>
-            <TouchableOpacity onPress={() => changeLang('Hebrew')}><Text style={styles.globeText}>🇮🇱</Text></TouchableOpacity>
-          </Animated.View>
-          <Animated.View style={[styles.floatingBtn, getAnimatedStyle(2)]}>
-            <TouchableOpacity onPress={() => changeLang('Russian')}><Text style={styles.globeText}>🇷🇺</Text></TouchableOpacity>
-          </Animated.View>
-          <Animated.View style={[styles.floatingBtn, getAnimatedStyle(3)]}>
-            <TouchableOpacity onPress={() => changeLang('Arabic')}><Text style={styles.globeText}>🇦🇪</Text></TouchableOpacity>
-          </Animated.View>
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <LinearGradient colors={['#050012', '#0a0026', '#000000']} style={styles.background}>
+        <SafeAreaView style={styles.container}>
+          
+          <View style={styles.floatingMenuContainer}>
+            <Animated.View style={[styles.floatingBtn, getAnimatedStyle(0)]}>
+              <TouchableOpacity onPress={() => changeLang('English')}><Text style={styles.globeText}>🇺🇸</Text></TouchableOpacity>
+            </Animated.View>
+            <Animated.View style={[styles.floatingBtn, getAnimatedStyle(1)]}>
+              <TouchableOpacity onPress={() => changeLang('Hebrew')}><Text style={styles.globeText}>🇮🇱</Text></TouchableOpacity>
+            </Animated.View>
+            <Animated.View style={[styles.floatingBtn, getAnimatedStyle(2)]}>
+              <TouchableOpacity onPress={() => changeLang('Russian')}><Text style={styles.globeText}>🇷🇺</Text></TouchableOpacity>
+            </Animated.View>
+            <Animated.View style={[styles.floatingBtn, getAnimatedStyle(3)]}>
+              <TouchableOpacity onPress={() => changeLang('Arabic')}><Text style={styles.globeText}>🇦🇪</Text></TouchableOpacity>
+            </Animated.View>
 
-          <TouchableOpacity style={[styles.floatingBtn, styles.mainMenuBtn]} onPress={toggleMenu}>
-            <Text style={styles.globeText}>{isMenuOpen ? '❌' : '🌐'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            
-            <View style={styles.iconContainer}>
-              <Ionicons name="game-controller" size={60} color="#00e5ff" />
-            </View>
-            
-            <Text style={styles.title}>{t.title}</Text>
-            <Text style={styles.subtitle}>{t.sub}</Text>
-
-            {/* שדות התחברות בלבד */}
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color="#888" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder={t.email}
-                placeholderTextColor="#aaaaaa"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color="#888" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder={t.pass}
-                placeholderTextColor="#aaaaaa"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.passwordToggle}>
-                <Ionicons name={showPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#aaaaaa" />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity activeOpacity={0.8} style={styles.emailLoginBtn} onPress={handleEmailLogin}>
-              <Text style={styles.emailLoginBtnText}>{t.signIn}</Text>
+            <TouchableOpacity style={[styles.floatingBtn, styles.mainMenuBtn]} onPress={toggleMenu}>
+              <Text style={styles.globeText}>{isMenuOpen ? '❌' : '🌐'}</Text>
             </TouchableOpacity>
+          </View>
 
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>{t.or}</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <TouchableOpacity activeOpacity={0.8} style={styles.loginButton} onPress={handleSignInGoogle}>
-              <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.loginButtonGradient}>
-                <Ionicons name="logo-google" size={22} color="#ffffff" />
-                <Text style={styles.loginButtonText}>{t.login}</Text>
-              </LinearGradient>
+          {onClose && (
+            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+              <Ionicons name="close" size={26} color="#ffffff" />
             </TouchableOpacity>
+          )}
 
-            <TouchableOpacity activeOpacity={0.8} style={[styles.loginButton, styles.appleButton]} onPress={handleAppleLogin}>
-              <View style={styles.loginButtonGradient}>
-                <Ionicons name="logo-apple" size={22} color="#ffffff" />
-                <Text style={styles.loginButtonText}>{t.loginApple}</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* 🌟 פותח את חלונית ההרשמה */}
-            <TouchableOpacity onPress={openRegisterModal} style={styles.registerLink}>
-              <Text style={styles.registerLinkText}>{t.createAccount}</Text>
-            </TouchableOpacity>
-
-          </ScrollView>
-        </KeyboardAvoidingView>
-
-        {/* 🌟 חלון הרשמה (Registration Modal) */}
-        <Modal visible={showRegisterModal} animationType="slide" transparent={true}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                
-                <Text style={styles.modalTitle}>{t.regTitle}</Text>
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              
+              <View style={styles.iconContainer}>
+                <Ionicons name="game-controller" size={60} color="#00e5ff" />
+              </View>
+              
+              <Text style={styles.title}>{t.title}</Text>
+              <Text style={styles.subtitle}>{t.sub}</Text>
 
-                <View style={styles.inputContainer}>
-                  <Ionicons name="mail-outline" size={20} color="#888" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder={t.email}
-                    placeholderTextColor="#aaaaaa"
-                    value={regEmail}
-                    onChangeText={setRegEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
+              <View style={styles.inputContainer}>
+                <Ionicons name="mail-outline" size={20} color="#888" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder={t.email}
+                  placeholderTextColor="#aaaaaa"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed-outline" size={20} color="#888" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder={t.pass}
+                  placeholderTextColor="#aaaaaa"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.passwordToggle}>
+                  <Ionicons name={showPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#aaaaaa" />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity activeOpacity={0.8} style={styles.emailLoginBtn} onPress={handleEmailLogin}>
+                <Text style={styles.emailLoginBtnText}>{t.signIn}</Text>
+              </TouchableOpacity>
+
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>{t.or}</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <TouchableOpacity activeOpacity={0.8} style={styles.loginButton} onPress={handleSignInGoogle}>
+                <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.loginButtonGradient}>
+                  <Ionicons name="logo-google" size={22} color="#ffffff" />
+                  <Text style={styles.loginButtonText}>{t.login}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity activeOpacity={0.8} style={[styles.loginButton, styles.appleButton]} onPress={handleAppleLogin}>
+                <View style={styles.loginButtonGradient}>
+                  <Ionicons name="logo-apple" size={22} color="#ffffff" />
+                  <Text style={styles.loginButtonText}>{t.loginApple}</Text>
                 </View>
+              </TouchableOpacity>
 
-                <View style={styles.inputContainer}>
-                  <Ionicons name="lock-closed-outline" size={20} color="#888" style={styles.inputIcon} />
+              <TouchableOpacity onPress={openRegisterModal} style={styles.registerLink}>
+                <Text style={styles.registerLinkText}>{t.createAccount}</Text>
+              </TouchableOpacity>
+
+            </ScrollView>
+          </KeyboardAvoidingView>
+
+          <Modal visible={showRegisterModal} animationType="slide" transparent={true}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  
+                  <Text style={styles.modalTitle}>{t.regTitle}</Text>
+
+                  <View style={styles.inputContainer}>
+                    <Ionicons name="mail-outline" size={20} color="#888" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder={t.email}
+                      placeholderTextColor="#aaaaaa"
+                      value={regEmail}
+                      onChangeText={setRegEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                  </View>
+
+                  <View style={styles.inputContainer}>
+                    <Ionicons name="lock-closed-outline" size={20} color="#888" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder={t.pass}
+                      placeholderTextColor="#aaaaaa"
+                      value={regPassword}
+                      onChangeText={setRegPassword}
+                      secureTextEntry={!regShowPassword}
+                      autoCapitalize="none"
+                    />
+                    <TouchableOpacity onPress={() => setRegShowPassword(!regShowPassword)} style={styles.passwordToggle}>
+                      <Ionicons name={regShowPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#aaaaaa" />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <Text style={styles.passwordRulesText}>{t.passRules}</Text>
+
+                  <TouchableOpacity activeOpacity={0.8} style={styles.verifyBtn} onPress={submitRegistration}>
+                    <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.verifyBtnGradient}>
+                      <Text style={styles.verifyBtnText}>{t.regBtn}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => setShowRegisterModal(false)} style={styles.cancelBtn}>
+                    <Text style={styles.cancelBtnText}>{t.back}</Text>
+                  </TouchableOpacity>
+                  
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </Modal>
+
+          <Modal visible={pendingVerification} animationType="fade" transparent={true}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <View style={styles.modalIconContainer}>
+                    <Ionicons name="mail-open-outline" size={40} color="#00e5ff" />
+                  </View>
+                  <Text style={styles.modalTitle}>{t.verifyTitle}</Text>
+                  <Text style={styles.modalSubtitle}>{t.verifySub}</Text>
+
                   <TextInput
-                    style={styles.input}
-                    placeholder={t.pass}
-                    placeholderTextColor="#aaaaaa"
-                    value={regPassword}
-                    onChangeText={setRegPassword}
-                    secureTextEntry={!regShowPassword}
-                    autoCapitalize="none"
+                    style={styles.codeInput}
+                    value={code}
+                    placeholder={t.codePlaceholder}
+                    placeholderTextColor="#888"
+                    keyboardType="numeric"
+                    onChangeText={setCode}
+                    maxLength={6}
                   />
-                  <TouchableOpacity onPress={() => setRegShowPassword(!regShowPassword)} style={styles.passwordToggle}>
-                    <Ionicons name={regShowPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#aaaaaa" />
+
+                  <TouchableOpacity activeOpacity={0.8} style={styles.verifyBtn} onPress={handleVerifyPress}>
+                    <LinearGradient colors={['#00e5ff', '#0088ff']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.verifyBtnGradient}>
+                      <Text style={styles.verifyBtnText}>{t.verifyBtn}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => setPendingVerification(false)} style={styles.cancelBtn}>
+                    <Text style={styles.cancelBtnText}>{t.back}</Text>
                   </TouchableOpacity>
                 </View>
-                
-                {/* 🌟 חוקי הסיסמה */}
-                <Text style={styles.passwordRulesText}>{t.passRules}</Text>
-
-                <TouchableOpacity activeOpacity={0.8} style={styles.verifyBtn} onPress={submitRegistration}>
-                  <LinearGradient colors={['#8a2be2', '#4b0082']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.verifyBtnGradient}>
-                    <Text style={styles.verifyBtnText}>{t.regBtn}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => setShowRegisterModal(false)} style={styles.cancelBtn}>
-                  <Text style={styles.cancelBtnText}>{t.back}</Text>
-                </TouchableOpacity>
-                
               </View>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
+            </KeyboardAvoidingView>
+          </Modal>
 
-        {/* חלון אימות המייל (OTP Modal) */}
-        <Modal visible={pendingVerification} animationType="fade" transparent={true}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <View style={styles.modalIconContainer}>
-                  <Ionicons name="mail-open-outline" size={40} color="#00e5ff" />
-                </View>
-                <Text style={styles.modalTitle}>{t.verifyTitle}</Text>
-                <Text style={styles.modalSubtitle}>{t.verifySub}</Text>
-
-                <TextInput
-                  style={styles.codeInput}
-                  value={code}
-                  placeholder={t.codePlaceholder}
-                  placeholderTextColor="#888"
-                  keyboardType="numeric"
-                  onChangeText={setCode}
-                  maxLength={6}
-                />
-
-                <TouchableOpacity activeOpacity={0.8} style={styles.verifyBtn} onPress={handleVerifyPress}>
-                  <LinearGradient colors={['#00e5ff', '#0088ff']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.verifyBtnGradient}>
-                    <Text style={styles.verifyBtnText}>{t.verifyBtn}</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => setPendingVerification(false)} style={styles.cancelBtn}>
-                  <Text style={styles.cancelBtnText}>{t.back}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
-
-      </SafeAreaView>
-    </LinearGradient>
+        </SafeAreaView>
+      </LinearGradient>
+    </Modal>
   );
 }
 
@@ -385,6 +392,7 @@ const styles = StyleSheet.create({
   floatingMenuContainer: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, left: 20, zIndex: 100 },
   floatingBtn: { width: 50, height: 50, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 25, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', position: 'absolute', top: 0, left: 0 },
   mainMenuBtn: { backgroundColor: 'rgba(10, 0, 38, 0.8)', borderColor: '#8a2be2' },
+  closeBtn: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, right: 20, zIndex: 100, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   globeText: { fontSize: 24 },
   scrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30, paddingTop: 100, paddingBottom: 40 },
   iconContainer: { marginBottom: 15, shadowColor: '#00e5ff', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 15, elevation: 10 },
@@ -406,7 +414,6 @@ const styles = StyleSheet.create({
   registerLink: { marginTop: 15, padding: 10 },
   registerLinkText: { color: '#00e5ff', fontSize: 16, fontWeight: 'bold', textDecorationLine: 'underline' },
 
-  // עיצוב חלונות קופצים (Modals)
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { width: '100%', backgroundColor: '#0a0026', borderRadius: 30, padding: 30, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(138, 43, 226, 0.4)' },
   modalIconContainer: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(0, 229, 255, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
