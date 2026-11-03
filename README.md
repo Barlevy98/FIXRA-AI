@@ -167,5 +167,5 @@ For support or inquiries, please contact the development team : fixra.partners@g
 ---
 
 **Last Updated**: August 2026  
-**Current Version**: 1.1  
+**Current Version**: 1.2  
 
